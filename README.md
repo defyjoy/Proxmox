@@ -108,7 +108,8 @@ task debug-vault          # Show vault variables
 ```
 ├── Taskfile.yml                      # Task automation (30+ commands)
 ├── ansible.cfg                       # Ansible configuration
-├── requirements.yml                  # Collection dependencies
+├── requirements.yml                  # Role & collection dependencies
+├── defaults/main.yml                 # RKE2 configuration (350+ variables)
 ├── inventory/hosts.yml               # 6 VMs defined
 ├── group_vars/all/
 │   ├── vars.yml                     # Proxmox & SSH settings
@@ -119,9 +120,15 @@ task debug-vault          # Show vault variables
 │   ├── rke2-ansible.yaml            # Deploy Kubernetes
 │   └── verify-proxmox.yml           # Diagnostics
 ├── roles/
+│   ├── lablabs.rke2/                # RKE2 deployment role
 │   ├── provision-vms/               # VM cloning role
 │   └── destroy-vms/                 # VM deletion role
-└── defaults/main.yml                # RKE2 configuration
+└── docs/                             # All documentation
+    ├── QUICKSTART.md
+    ├── SETUP.md
+    ├── TROUBLESHOOTING.md
+    ├── RKE2-*.md                    # RKE2 guides
+    └── *.md                         # Other docs
 ```
 
 ## Configuration
@@ -215,18 +222,28 @@ ssh_private_key_file: ~/.ssh/proxmox
 
 ## Access Kubernetes Cluster
 
-After RKE2 deployment:
+After RKE2 deployment, the kubeconfig is automatically downloaded to `rke2.yaml` in the workspace root.
 
+**Quick Access:**
+```bash
+# Use directly
+kubectl --kubeconfig=rke2.yaml get nodes
+
+# Or set environment variable
+export KUBECONFIG=$PWD/rke2.yaml
+kubectl get nodes
+```
+
+**Alternative - Manual download:**
 ```bash
 # Copy kubeconfig from master
 scp -i ~/.ssh/proxmox root@192.168.68.100:/etc/rancher/rke2/rke2.yaml ~/.kube/config
 
 # Update server IP
 sed -i 's/127.0.0.1/192.168.68.100/g' ~/.kube/config
-
-# Verify
-kubectl get nodes
 ```
+
+📚 **See [docs/KUBECONFIG-USAGE.md](docs/KUBECONFIG-USAGE.md) for complete kubeconfig guide**
 
 ## Cleanup
 
@@ -258,12 +275,24 @@ task vault-view  # Verify credentials
 
 ## Documentation
 
-- **QUICKSTART.md** - Step-by-step deployment guide
-- **SETUP.md** - Complete setup instructions
-- **docs/RKE2-DEPLOYMENT.md** - RKE2 cluster deployment guide (comprehensive)
-- **docs/VAULT.md** - Ansible Vault management
-- **docs/AUTHENTICATION.md** - Security and auth setup
-- **TROUBLESHOOTING.md** - Debug and common issues
+📚 **All documentation is organized in the [`docs/`](docs/) folder**
+
+👉 **Start here: [docs/DOCUMENTATION-INDEX.md](docs/DOCUMENTATION-INDEX.md)** - Complete navigation guide
+
+### General Documentation
+- **[docs/QUICKSTART.md](docs/QUICKSTART.md)** - Step-by-step deployment guide
+- **[docs/SETUP.md](docs/SETUP.md)** - Complete setup instructions
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Debug and common issues
+- **[docs/AUTHENTICATION.md](docs/AUTHENTICATION.md)** - Security and auth setup
+- **[docs/VAULT.md](docs/VAULT.md)** - Ansible Vault management
+
+### RKE2 Kubernetes Documentation
+- **[docs/RKE2-QUICKSTART.md](docs/RKE2-QUICKSTART.md)** - RKE2 quick start
+- **[docs/RKE2-DEPLOYMENT.md](docs/RKE2-DEPLOYMENT.md)** - Complete RKE2 deployment guide
+- **[docs/RKE2-SETUP.md](docs/RKE2-SETUP.md)** - RKE2 setup and prerequisites
+- **[docs/RKE2-IMPLEMENTATION-SUMMARY.md](docs/RKE2-IMPLEMENTATION-SUMMARY.md)** - Implementation architecture
+- **[docs/KUBECONFIG-USAGE.md](docs/KUBECONFIG-USAGE.md)** - Kubeconfig download and usage
+- **[docs/FIXED-README.md](docs/FIXED-README.md)** - Recent fixes and updates
 
 ## Features
 
