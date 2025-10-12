@@ -45,16 +45,38 @@ task install
 - Proxmox UI → Datacenter → Permissions → API Tokens → Add
 - Save token ID and secret
 
-**Store credentials securely:**
+**Create and configure encrypted vault:**
 ```bash
+# Step 1: Create encrypted vault file
 task vault-create
-# Enter API token credentials
-# Set vault password
+# This will:
+# - Copy vault.yml.example to vault.yml
+# - Open editor to enter your credentials
+# - Encrypt the file with a password
+
+# Step 2: Edit vault.yml and add your Proxmox credentials:
+vault_proxmox_api_token_id: "root@pam!your-token-id"
+vault_proxmox_api_token_secret: "your-secret-token"
+vault_rke2_token: "your-secure-rke2-cluster-token"
+
+# Step 3 (Optional): Save vault password to avoid repeated prompts
+task vault-password-file
+# Enter your vault password when prompted
 ```
 
-**Save vault password (optional, for convenience):**
+**Manage vault later:**
 ```bash
-task vault-password-file
+# Edit encrypted vault
+task vault-edit
+
+# View vault contents
+task vault-view
+
+# Change vault password
+task vault-rekey
+
+# Debug vault (shows masked values)
+task debug-vault
 ```
 
 ### 3. Update Configuration
@@ -83,24 +105,33 @@ task cluster
 # View all commands
 task --list
 
-# Vault management
-task vault-create           # Create encrypted vault
-task vault-password-file    # Save vault password locally
-task vault-edit            # Edit credentials
+# Setup & Installation
+task install               # Install Ansible roles and collections
 
-# VM lifecycle
-task provision             # Clone and start VMs
-task destroy              # Delete all VMs (with confirmation)
-task verify-proxmox       # Check Proxmox and list templates
+# Vault Management (Credential Security)
+task vault-create          # Create new encrypted vault file
+task vault-edit            # Edit encrypted vault credentials
+task vault-view            # View vault contents (read-only)
+task vault-rekey           # Change vault password
+task vault-password-file   # Save vault password locally (convenience)
+task vault-password-remove # Remove saved vault password
+task debug-vault           # Show vault variables (masked)
 
-# Kubernetes
-task rke2                 # Deploy RKE2 cluster
-task cluster              # Full deployment (provision + RKE2)
+# VM Lifecycle
+task provision             # Clone and start VMs from template
+task destroy               # Delete all VMs (with confirmation)
+task verify-proxmox        # Check Proxmox connection and list templates
 
-# Diagnostics
-task ping                 # Test SSH connectivity
-task syntax               # Check playbook syntax
-task debug-vault          # Show vault variables
+# Kubernetes / RKE2
+task rke2                  # Deploy RKE2 cluster on provisioned VMs
+task cluster               # Full deployment (install + provision + RKE2)
+task rke2-check            # Dry-run RKE2 deployment
+
+# Diagnostics & Testing
+task ping                  # Test SSH connectivity to all hosts
+task syntax                # Check playbook syntax
+task check-inventory       # Verify inventory file
+task list-hosts            # List all hosts in inventory
 ```
 
 ## Project Structure
@@ -159,37 +190,86 @@ vm_storage: local
 
 ### Vault (Encrypted Credentials)
 
-`group_vars/all/vault.yml` contains:
+The encrypted vault file `group_vars/all/vault.yml` stores sensitive credentials:
+
 ```yaml
-vault_proxmox_api_token_id: "user@pam!token"
-vault_proxmox_api_token_secret: "secret"
+# Proxmox API authentication
+vault_proxmox_api_token_id: "root@pam!your-token-id"
+vault_proxmox_api_token_secret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# RKE2 cluster token (shared secret for nodes to join cluster)
+vault_rke2_token: "your-secure-random-token-here"
 ```
+
+**Create vault:**
+```bash
+task vault-create    # Creates and encrypts vault.yml
+```
+
+**Edit vault:**
+```bash
+task vault-edit      # Edit encrypted vault with your editor
+```
+
+**Vault password options:**
+```bash
+# Option 1: Enter password each time (more secure)
+# Just use task commands, password will be prompted
+
+# Option 2: Save password to .vault_pass file (convenience)
+task vault-password-file
+# Password will be auto-used by all tasks
+
+# Remove saved password
+task vault-password-remove
+```
+
+📚 **See [docs/VAULT.md](docs/VAULT.md) for complete vault management guide**
 
 ## Common Workflows
 
+**First-time setup:**
+```bash
+task install        # Install dependencies
+task vault-create   # Create encrypted credentials
+# Edit the vault file that opens, add your tokens
+# Save and exit - file will be encrypted
+task verify-proxmox # Test Proxmox connection
+```
+
 **Full deployment:**
 ```bash
-task cluster  # provision + RKE2
+task cluster  # install + provision + RKE2 (complete automation)
 ```
 
 **Step by step:**
 ```bash
-task provision  # Clone VMs
-task ping      # Verify SSH
-task rke2      # Deploy K8s
+task provision  # Clone VMs from template
+task ping       # Verify SSH connectivity
+task rke2       # Deploy RKE2 Kubernetes cluster
+```
+
+**Manage credentials:**
+```bash
+task vault-edit            # Edit encrypted credentials
+task vault-view            # View vault contents
+task vault-rekey           # Change vault password
+task vault-password-file   # Save password (no more prompts)
 ```
 
 **Cleanup and rebuild:**
 ```bash
-task destroy   # Delete VMs
-task provision # Recreate
+task destroy   # Delete all VMs
+task provision # Recreate VMs
+task rke2      # Redeploy cluster
 ```
 
 **Diagnostics:**
 ```bash
-task verify-proxmox  # Check Proxmox
+task verify-proxmox  # Check Proxmox connection
 task debug-vault     # Show credentials (masked)
 task list-hosts      # Show inventory
+task ping            # Test SSH to all nodes
 ```
 
 ## Authentication (100% Key-Based)
