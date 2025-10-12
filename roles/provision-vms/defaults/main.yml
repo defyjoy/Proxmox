@@ -19,8 +19,8 @@ vm_network_bridge: vmbr0
 vm_network_model: virtio
 
 # Cloud-init settings (SSH key based authentication only)
-vm_ciuser: ubuntu
-vm_sshkeys: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub') }}"
+# vm_sshkeys is loaded from group_vars/all/vars.yml
+vm_ciuser: root
 vm_nameserver: 8.8.8.8
 vm_searchdomain: local
 

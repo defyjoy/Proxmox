@@ -7,6 +7,11 @@ proxmox_api_user: root@pam
 proxmox_node: pve-01
 proxmox_template_id: 9000
 
+# SSH Key configuration
+ssh_public_key_file: "{{ lookup('env', 'HOME') }}/.ssh/proxmox.pub"
+ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/proxmox"
+vm_sshkeys: "{{ lookup('file', ssh_public_key_file) }}"
+
 # Note: API token credentials are loaded directly from vault.yml
 # vault_proxmox_api_token_id and vault_proxmox_api_token_secret
 

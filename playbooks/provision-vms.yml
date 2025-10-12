@@ -93,10 +93,9 @@
       ansible.builtin.command: cloud-init status --wait
       register: cloud_init_status
       changed_when: false
-      retries: 30
-      delay: 10
-      until: cloud_init_status.rc == 0
-      ignore_errors: true
+      failed_when: false
+      async: 300
+      poll: 10
     
     - name: Display cloud-init status
       ansible.builtin.debug:

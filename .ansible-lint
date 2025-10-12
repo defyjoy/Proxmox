@@ -1,0 +1,32 @@
+# Ansible Lint Configuration
+
+# Skip certain rules that may not apply
+skip_list:
+  - 'yaml[line-length]'  # Allow longer lines
+  - 'name[casing]'       # Allow flexible task naming
+  - 'fqcn[action-core]'  # Allow short-form module names for built-ins
+
+# Exclude paths
+exclude_paths:
+  - .cache/
+  - .git/
+  - .github/
+  - roles/provision-vms/README.md
+  - roles/destroy-vms/
+  - docs/
+
+# Enable progressive mode
+progressive: true
+
+# Use default rules
+profile: production
+
+# Offline mode (no internet checks)
+offline: true
+
+# Parseable format for CI/CD
+# parseable: true
+
+# Set verbosity
+verbosity: 1
+
