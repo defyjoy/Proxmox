@@ -260,6 +260,7 @@ task vault-view  # Verify credentials
 
 - **QUICKSTART.md** - Step-by-step deployment guide
 - **SETUP.md** - Complete setup instructions
+- **docs/RKE2-DEPLOYMENT.md** - RKE2 cluster deployment guide (comprehensive)
 - **docs/VAULT.md** - Ansible Vault management
 - **docs/AUTHENTICATION.md** - Security and auth setup
 - **TROUBLESHOOTING.md** - Debug and common issues
@@ -270,6 +271,8 @@ task vault-view  # Verify credentials
 ✅ SSH key authentication (no passwords)  
 ✅ Automated VM cloning and configuration  
 ✅ Cloud-init for network setup  
+✅ RKE2 Kubernetes deployment (lablabs.rke2 collection)  
+✅ High Availability cluster support  
 ✅ Complete lifecycle management  
 ✅ 30+ Taskfile commands  
 ✅ Comprehensive documentation

@@ -46,3 +46,5 @@ rke2.yaml
 # Task/Make artifacts
 .task/
 
+
+roles/lablabs.rke2/
