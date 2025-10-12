@@ -1,0 +1,48 @@
+# Environment files
+.env
+
+# Ansible
+*.retry
+.ansible/
+/tmp/ansible_facts/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Sensitive data - Ansible Vault files (only ignore unencrypted vault files)
+group_vars/all/vault.yml
+group_vars/*/vault.yml
+host_vars/*/vault.yml
+*.key
+*.pem
+.vault_pass
+.vault_password
+vault_password.txt
+
+# Downloaded kubeconfig
+rke2.yaml
+*.kubeconfig
+
+# Task/Make artifacts
+.task/
+

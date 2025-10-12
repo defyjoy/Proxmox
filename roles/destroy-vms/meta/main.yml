@@ -1,0 +1,23 @@
+---
+galaxy_info:
+  author: RKE2 Provisioner
+  description: Destroy VMs in Proxmox
+  company: Homelab
+  license: MIT
+  min_ansible_version: "2.10"
+  
+  platforms:
+    - name: Debian
+      versions:
+        - all
+    - name: Ubuntu
+      versions:
+        - all
+  
+  galaxy_tags:
+    - proxmox
+    - virtualization
+    - cleanup
+
+dependencies: []
+

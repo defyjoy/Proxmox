@@ -1,0 +1,34 @@
+---
+# Proxmox API connection details (token-based authentication only)
+# API credentials are loaded from encrypted vault: group_vars/all/vault.yml
+proxmox_host: 192.168.68.65
+proxmox_api_user: root@pam
+proxmox_node: pve-01
+
+# VM Template settings
+proxmox_template_id: 9000
+proxmox_template_name: "ubuntu-cloud-init"  # Name of template VM in Proxmox
+proxmox_template_storage: local
+
+# VM Configuration
+vm_cores: 2
+vm_memory: 4096
+vm_disk_size: 32
+vm_storage: local
+vm_network_bridge: vmbr0
+vm_network_model: virtio
+
+# Cloud-init settings (SSH key based authentication only)
+vm_ciuser: ubuntu
+vm_sshkeys: "{{ lookup('file', lookup('env', 'HOME') + '/.ssh/id_rsa.pub') }}"
+vm_nameserver: 8.8.8.8
+vm_searchdomain: local
+
+# VM naming
+vm_name_prefix: rke2
+vm_start_id: 200
+
+# Timeout settings
+vm_timeout: 300
+vm_startup_delay: 10
+

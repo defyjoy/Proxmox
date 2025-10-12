@@ -1,0 +1,104 @@
+---
+- name: Verify Proxmox Connection and Template
+  hosts: localhost
+  gather_facts: false
+  become: false
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    proxmox_template_id: 9000
+    proxmox_template_name: "ubuntu-cloud-init"
+  
+  tasks:
+    - name: Display connection info
+      ansible.builtin.debug:
+        msg:
+          - "Testing Proxmox connection..."
+          - "Host: {{ proxmox_host }}"
+          - "User: {{ proxmox_api_user }}"
+          - "Node: {{ proxmox_node }}"
+          - "Token ID: {{ vault_proxmox_api_token_id }}"
+
+    - name: Debug - Show Proxmox connection settings
+      ansible.builtin.debug:
+        msg:
+          - "Proxmox Host: {{ proxmox_host }}"
+          - "Proxmox User: {{ proxmox_api_user }}"
+          - "Proxmox Node: {{ proxmox_node }}"
+          - "API Token ID: {{ vault_proxmox_api_token_id }}"
+          - "API Token Secret: {{ vault_proxmox_api_token_secret | default('NOT_SET') | regex_replace('^.{4}(.*)$', '****\\1') }}"
+          - "Template ID: {{ proxmox_template_id }}"
+          - "Template Name: {{ proxmox_template_name }}"
+      # tags: [debug, never]
+
+    - name: Get Proxmox node information
+      community.proxmox.proxmox_node_info:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+      register: proxmox_nodes
+      ignore_errors: true
+    
+    - name: Show Proxmox nodes
+      ansible.builtin.debug:
+        var: proxmox_nodes
+      when: proxmox_nodes is succeeded
+    
+    - name: Show connection error
+      ansible.builtin.debug:
+        msg:
+          - "❌ Failed to connect to Proxmox"
+          - "Error: {{ proxmox_nodes.msg }}"
+          - ""
+          - "Check:"
+          - "  1. Proxmox is reachable: ping {{ proxmox_host }}"
+          - "  2. API token is correct"
+          - "  3. Token has proper permissions"
+      when: proxmox_nodes is failed
+    
+    - name: List all VMs on the node
+      community.proxmox.proxmox_vm_info:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+      register: all_vms
+      ignore_errors: true
+    
+    - name: Show all VMs
+      ansible.builtin.debug:
+        msg: "{{ all_vms.proxmox_vms | map(attribute='name') | list if all_vms.proxmox_vms is defined else 'No VMs found' }}"
+      when: all_vms is succeeded
+    
+    - name: Check if template 9000 exists
+      ansible.builtin.debug:
+        msg: "{{ all_vms.proxmox_vms | selectattr('vmid', 'equalto', 9000) | list }}"
+      when: all_vms is succeeded and all_vms.proxmox_vms is defined
+    
+    - name: Search for template by name
+      ansible.builtin.set_fact:
+        found_template: "{{ all_vms.proxmox_vms | selectattr('name', 'equalto', 'ubuntu-cloud-init') | list | first | default({}) }}"
+      when: all_vms is succeeded and all_vms.proxmox_vms is defined
+    
+    - name: Show template search result
+      ansible.builtin.debug:
+        msg:
+          - "Searching for template named 'ubuntu-cloud-init':"
+          - "{{ found_template if found_template else '❌ Template not found with this name' }}"
+      when: all_vms is succeeded
+    
+    - name: List all templates on the node
+      ansible.builtin.debug:
+        msg: "{{ all_vms.proxmox_vms | selectattr('template', 'defined') | selectattr('template', 'equalto', 1) | map(attribute='name') | list }}"
+      when: all_vms is succeeded and all_vms.proxmox_vms is defined
+    
+    - name: Show all VMs with ID and name
+      ansible.builtin.debug:
+        msg: "{{ all_vms.proxmox_vms | map(attribute='vmid') | zip(all_vms.proxmox_vms | map(attribute='name')) | list if all_vms.proxmox_vms is defined else [] }}"
+      when: all_vms is succeeded
+

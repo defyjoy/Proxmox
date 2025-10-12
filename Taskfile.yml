@@ -1,0 +1,351 @@
+---
+version: '3'
+
+vars:
+  INVENTORY_FILE: inventory/hosts.yml
+  PLAYBOOKS_DIR: playbooks
+  ANSIBLE_CONFIG: ansible.cfg
+
+env:
+  ANSIBLE_FORCE_COLOR: "true"
+
+tasks:
+  default:
+    desc: Show available tasks
+    cmds:
+      - task --list
+    silent: true
+
+  install:
+    desc: Install required Ansible collections and dependencies
+    cmds:
+      - echo "Installing Ansible collections..."
+      - ansible-galaxy collection install -r requirements.yml
+      - echo "Collections installed successfully!"
+    sources:
+      - requirements.yml
+  
+  vault-create:
+    desc: Create and encrypt a new vault file for Proxmox credentials
+    cmds:
+      - |
+        if [ -f group_vars/all/vault.yml ]; then
+          echo "❌ Vault file already exists at group_vars/all/vault.yml"
+          echo "Use 'task vault-edit' to edit it or remove it first"
+          exit 1
+        fi
+      - cp group_vars/all/vault.yml.example group_vars/all/vault.yml
+      - echo "📝 Edit the vault file with your credentials, then press Ctrl+X to save"
+      - nano group_vars/all/vault.yml
+      - ansible-vault encrypt group_vars/all/vault.yml
+      - echo "✅ Vault file created and encrypted!"
+  
+  vault-edit:
+    desc: Edit the encrypted vault file
+    cmds:
+      - ansible-vault edit group_vars/all/vault.yml
+  
+  vault-view:
+    desc: View the contents of the encrypted vault file
+    cmds:
+      - ansible-vault view group_vars/all/vault.yml
+  
+  vault-rekey:
+    desc: Change the vault password
+    cmds:
+      - ansible-vault rekey group_vars/all/vault.yml
+  
+  vault-encrypt:
+    desc: Encrypt an existing unencrypted vault file
+    cmds:
+      - ansible-vault encrypt group_vars/all/vault.yml
+  
+  vault-decrypt:
+    desc: Decrypt the vault file (use with caution!)
+    cmds:
+      - ansible-vault decrypt group_vars/all/vault.yml
+      - echo "⚠️  WARNING - Vault file is now UNENCRYPTED!"
+  
+  vault-password-file:
+    desc: Create a vault password file (auto-used by tasks)
+    cmds:
+      - |
+        if [ -f .vault_pass ]; then
+          echo "❌ Vault password file already exists"
+          exit 1
+        fi
+      - |
+        echo "📝 Enter your vault password (will be saved to .vault_pass)"
+        read -s -p "Vault Password: " VAULT_PASSWORD
+        echo ""
+        echo "$VAULT_PASSWORD" > .vault_pass
+        chmod 600 .vault_pass
+        echo "✅ Vault password file created (.vault_pass)"
+        echo "🔒 File permissions set to 600"
+        echo "ℹ️  Tasks will now use this file automatically"
+  
+  vault-password-remove:
+    desc: Remove the vault password file
+    cmds:
+      - |
+        if [ ! -f .vault_pass ]; then
+          echo "ℹ️  No vault password file found"
+          exit 0
+        fi
+      - rm -f .vault_pass
+      - echo "✅ Vault password file removed"
+      - echo "ℹ️  Tasks will now prompt for password"
+  
+  debug-vault:
+    desc: Show vault variables (masked) for debugging
+    cmds:
+      - echo "Displaying vault variables..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/debug-vault.yml --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/debug-vault.yml --ask-vault-pass
+        fi
+  
+  verify-proxmox:
+    desc: Verify Proxmox connection and list all VMs/templates
+    cmds:
+      - echo "Verifying Proxmox connection and looking for templates..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook {{.PLAYBOOKS_DIR}}/verify-proxmox.yml --vault-password-file .vault_pass
+        else
+          ansible-playbook {{.PLAYBOOKS_DIR}}/verify-proxmox.yml --ask-vault-pass
+        fi
+
+  check-inventory:
+    desc: Verify inventory file syntax
+    cmds:
+      - echo "Checking inventory file..."
+      - ansible-inventory -i {{.INVENTORY_FILE}} --list
+    silent: false
+
+  ping:
+    desc: Test connectivity to all hosts in inventory
+    cmds:
+      - echo "Testing connectivity to all hosts..."
+      - ansible all -i {{.INVENTORY_FILE}} -m ping
+
+  provision:
+    desc: Provision VMs in Proxmox from template 9000
+    cmds:
+      - echo "Provisioning VMs from Proxmox template..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --ask-vault-pass
+        fi
+    sources:
+      - "{{.PLAYBOOKS_DIR}}/provision-vms.yml"
+      - "{{.INVENTORY_FILE}}"
+      - roles/provision-vms/**/*
+      - group_vars/all/vault.yml
+  
+  provision-debug:
+    desc: Provision VMs with debug output showing vault variables
+    cmds:
+      - echo "Provisioning VMs with debug information..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --vault-password-file .vault_pass --tags debug -v
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --ask-vault-pass --tags debug -v
+        fi
+  
+  destroy:
+    desc: Destroy all provisioned VMs (with confirmation prompt)
+    cmds:
+      - echo "⚠️  DESTRUCTIVE OPERATION - This will delete all VMs!"
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/destroy-vms.yml --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/destroy-vms.yml --ask-vault-pass
+        fi
+  
+  destroy-force:
+    desc: Destroy all VMs without confirmation (DANGEROUS!)
+    cmds:
+      - echo "⚠️  FORCING DESTRUCTION OF ALL VMs - NO CONFIRMATION!"
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/destroy-vms.yml --vault-password-file .vault_pass -e "force_destroy=true"
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/destroy-vms.yml --ask-vault-pass -e "force_destroy=true"
+        fi
+
+  provision-check:
+    desc: Dry-run provision playbook (check mode)
+    cmds:
+      - echo "Running provision playbook in check mode..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --check --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --check --ask-vault-pass
+        fi
+
+  rke2:
+    desc: Install and configure RKE2 cluster
+    cmds:
+      - echo "Installing RKE2 cluster..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --ask-vault-pass
+        fi
+    sources:
+      - "{{.PLAYBOOKS_DIR}}/rke2-ansible.yaml"
+      - "{{.INVENTORY_FILE}}"
+      - defaults/main.yml
+      - group_vars/all/vault.yml
+
+  rke2-check:
+    desc: Dry-run RKE2 playbook (check mode)
+    cmds:
+      - echo "Running RKE2 playbook in check mode..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --check --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --check --ask-vault-pass
+        fi
+
+  all:
+    desc: Execute all playbooks in sequence (provision + RKE2)
+    cmds:
+      - task: provision
+      - task: rke2
+
+  all-check:
+    desc: Dry-run all playbooks in check mode
+    cmds:
+      - task: provision-check
+      - task: rke2-check
+
+  cluster:
+    desc: Full cluster deployment (install deps, provision VMs, install RKE2)
+    cmds:
+      - task: install
+      - task: provision
+      - echo "Waiting 30 seconds for VMs to fully initialize..."
+      - sleep 30
+      - task: ping
+      - task: rke2
+
+  syntax:
+    desc: Check syntax of all playbooks
+    cmds:
+      - echo "Checking provision-vms.yml syntax..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --syntax-check --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --syntax-check --ask-vault-pass
+        fi
+      - echo "Checking rke2-ansible.yaml syntax..."
+      - |
+        if [ -f .vault_pass ]; then
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --syntax-check --vault-password-file .vault_pass
+        else
+          ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --syntax-check --ask-vault-pass
+        fi
+      - echo "All playbooks passed syntax check!"
+
+  lint:
+    desc: Lint all playbooks with ansible-lint
+    cmds:
+      - echo "Linting playbooks..."
+      - ansible-lint {{.PLAYBOOKS_DIR}}/provision-vms.yml || true
+      - ansible-lint {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml || true
+
+  list-hosts:
+    desc: List all hosts in inventory
+    cmds:
+      - echo "=== All Hosts ==="
+      - ansible all -i {{.INVENTORY_FILE}} --list-hosts
+      - echo ""
+      - echo "=== Master Nodes ==="
+      - ansible masters -i {{.INVENTORY_FILE}} --list-hosts
+      - echo ""
+      - echo "=== Worker Nodes ==="
+      - ansible workers -i {{.INVENTORY_FILE}} --list-hosts
+
+  facts:
+    desc: Gather and display facts from all hosts
+    cmds:
+      - ansible all -i {{.INVENTORY_FILE}} -m setup
+
+  clean:
+    desc: Clean up temporary files and caches
+    cmds:
+      - echo "Cleaning up..."
+      - find . -type f -name "*.retry" -delete
+      - find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      - echo "Cleanup complete!"
+
+  # Proxmox-specific tasks
+  proxmox-ping:
+    desc: Test Proxmox API connectivity
+    cmds:
+      - echo "Testing Proxmox API connectivity..."
+      - echo "Note - Ensure PROXMOX_API_TOKEN_ID and PROXMOX_API_TOKEN_SECRET are set"
+      - ansible localhost -m community.proxmox.proxmox_node_info -a "api_host=192.168.68.65 api_user=root@pam api_token_id=$PROXMOX_API_TOKEN_ID api_token_secret=$PROXMOX_API_TOKEN_SECRET" || echo "Failed to connect to Proxmox API"
+
+  # Help and documentation
+  help:
+    desc: Show detailed help information
+    cmds:
+      - |
+        cat << EOF
+        RKE2 Proxmox Provisioner - Taskfile Commands
+        ============================================
+        
+        Quick Start:
+          task install        # Install dependencies
+          task cluster        # Full deployment (provision + RKE2)
+        
+        Individual Playbooks:
+          task provision      # Provision VMs from template
+          task destroy        # Destroy all VMs (with confirmation)
+          task rke2           # Install RKE2 cluster
+          task all            # Run both playbooks
+        
+        Testing & Validation:
+          task ping           # Test SSH connectivity
+          task syntax         # Check playbook syntax
+          task provision-check # Dry-run provision
+          task rke2-check     # Dry-run RKE2
+        
+        Inventory:
+          task list-hosts     # List all inventory hosts
+          task check-inventory # Verify inventory syntax
+        
+        Vault Management:
+          task vault-create          # Create encrypted vault file
+          task vault-edit            # Edit encrypted vault
+          task vault-view            # View vault contents
+          task vault-rekey           # Change vault password
+          task vault-password-file   # Save password (no more prompts)
+          task vault-password-remove # Remove password file
+        
+        Authentication Setup:
+          1. Create Proxmox API Token in Datacenter -> Permissions -> API Tokens
+          2. Store credentials in encrypted vault: task vault-create
+          3. Configure SSH key in inventory/hosts.yml
+        
+        Example:
+          task vault-create   # Setup vault with credentials
+          task cluster        # Deploy cluster (will ask for vault password)
+        
+        For more info: task --list
+        EOF
+    silent: true
+

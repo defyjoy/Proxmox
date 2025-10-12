@@ -1,0 +1,12 @@
+---
+# Example vault file for sensitive credentials
+# Copy this to vault.yml and encrypt it with:
+# ansible-vault encrypt group_vars/all/vault.yml
+
+# Proxmox API Token Credentials
+vault_proxmox_api_token_id: "root@pam!provisioner"
+vault_proxmox_api_token_secret: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Optional: SSH key passphrase if your key is encrypted
+# vault_ansible_ssh_pass: "your-ssh-key-passphrase"
+

@@ -1,0 +1,12 @@
+---
+# Non-sensitive variables for all hosts
+
+# Proxmox connection settings
+proxmox_host: 192.168.68.65
+proxmox_api_user: root@pam
+proxmox_node: pve-01
+proxmox_template_id: 9000
+
+# Note: API token credentials are loaded directly from vault.yml
+# vault_proxmox_api_token_id and vault_proxmox_api_token_secret
+

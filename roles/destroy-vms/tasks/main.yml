@@ -1,0 +1,35 @@
+---
+- name: Stop VM
+  become: false
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_token_id: "{{ vault_proxmox_api_token_id }}"
+    api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vm_id }}"
+    state: stopped
+    force: true
+  delegate_to: localhost
+  register: vm_stop_result
+  ignore_errors: true
+
+- name: Delete VM
+  become: false
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_token_id: "{{ vault_proxmox_api_token_id }}"
+    api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vm_id }}"
+    state: absent
+    force: true
+  delegate_to: localhost
+  register: vm_delete_result
+
+- name: Display deletion result
+  ansible.builtin.debug:
+    msg: "✅ VM {{ vm_name }} (ID {{ vm_id }}) deleted successfully"
+  when: vm_delete_result is changed
+

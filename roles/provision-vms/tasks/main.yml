@@ -1,0 +1,110 @@
+---
+- name: Ensure community.proxmox collection is available
+  ansible.builtin.debug:
+    msg: "Using community.proxmox.proxmox_kvm module for VM provisioning"
+
+- name: Debug - Show Proxmox connection settings
+  ansible.builtin.debug:
+    msg:
+      - "Proxmox Host: {{ proxmox_host }}"
+      - "Proxmox User: {{ proxmox_api_user }}"
+      - "Proxmox Node: {{ proxmox_node }}"
+      - "API Token ID: {{ vault_proxmox_api_token_id }}"
+      - "API Token Secret: {{ vault_proxmox_api_token_secret | default('NOT_SET') | regex_replace('^.{4}(.*)$', '****\\1') }}"
+      - "Template ID: {{ proxmox_template_id }}"
+      - "VM ID: {{ vm_id }}"
+      - "VM Name: {{ vm_name }}"
+      - "VM IP: {{ ansible_host }}"
+  tags: [debug, never]
+
+- name: Clone VM from template {{ proxmox_template_name }} (ID {{ proxmox_template_id }})
+  become: false
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_token_id: "{{ vault_proxmox_api_token_id }}"
+    api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+    node: "{{ proxmox_node }}"
+    clone: "{{ proxmox_template_name }}"
+    newid: "{{ vm_id }}"
+    name: "{{ vm_name }}"
+    storage: "{{ vm_storage }}"
+    full: true
+    timeout: "{{ vm_timeout }}"
+    state: present
+  delegate_to: localhost
+  register: vm_clone_result
+
+- name: Configure cloned VM
+  become: false
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_token_id: "{{ vault_proxmox_api_token_id }}"
+    api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vm_id }}"
+    name: "{{ vm_name }}"
+    cores: "{{ vm_cores }}"
+    memory: "{{ vm_memory }}"
+    net:
+      net0: "{{ vm_network_model }},bridge={{ vm_network_bridge }}"
+    ipconfig:
+      ipconfig0: "ip={{ ansible_host }}/24,gw={{ vm_gateway | default('192.168.68.1') }}"
+    nameservers: "{{ vm_nameserver }}"
+    searchdomains: "{{ vm_searchdomain }}"
+    ciuser: "{{ vm_ciuser }}"
+    sshkeys: "{{ vm_sshkeys }}"
+    update: true
+  delegate_to: localhost
+  when: vm_clone_result is changed
+
+- name: Resize VM disk
+  become: false
+  community.proxmox.proxmox_disk:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_token_id: "{{ vault_proxmox_api_token_id }}"
+    api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+    vmid: "{{ vm_id }}"
+    disk: scsi0
+    size: "{{ vm_disk_size }}G"
+    state: resized
+  delegate_to: localhost
+  when: 
+    - vm_clone_result is changed
+    - vm_disk_size is defined
+
+- name: Start VM
+  become: false
+  community.proxmox.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_api_user }}"
+    api_token_id: "{{ vault_proxmox_api_token_id }}"
+    api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vm_id }}"
+    state: started
+  delegate_to: localhost
+  when: vm_clone_result is changed
+
+- name: Wait for VM network to be reachable
+  become: false
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 22
+    delay: "{{ vm_startup_delay }}"
+    timeout: "{{ vm_timeout }}"
+    state: started
+  delegate_to: localhost
+  when: vm_clone_result is changed
+
+- name: Display VM creation result
+  ansible.builtin.debug:
+    msg:
+      - "✅ VM {{ vm_name }} (ID: {{ vm_id }}) created and started"
+      - "IP: {{ ansible_host }}"
+      - "Status: Network reachable on port 22"
+      - "Note: Cloud-init may still be initializing..."
+  when: vm_clone_result is changed
+

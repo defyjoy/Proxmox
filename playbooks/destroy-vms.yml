@@ -1,0 +1,134 @@
+---
+- name: Destroy VMs in Proxmox
+  hosts: k8s_cluster
+  gather_facts: false
+  become: false
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    # Master nodes get IDs starting from 100
+    # Worker nodes get IDs starting from 110
+    master_vm_id_start: 100
+    worker_vm_id_start: 110
+    
+    # Force deletion without confirmation (set to true to skip prompts)
+    force_destroy: false
+  
+  tasks:
+    - name: Set VM ID for master nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ master_vm_id_start + groups['masters'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['masters']
+    
+    - name: Set VM ID for worker nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ worker_vm_id_start + groups['workers'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['workers']
+    
+    - name: Display VM destruction warning
+      ansible.builtin.debug:
+        msg:
+          - "⚠️  WARNING: About to DESTROY VM"
+          - "VM Name: {{ vm_name }}"
+          - "VM ID: {{ vm_id }}"
+          - "IP: {{ ansible_host }}"
+      run_once: false
+    
+    - name: Pause for confirmation (unless force_destroy=true)
+      ansible.builtin.pause:
+        prompt: |
+          
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          ⚠️  DESTRUCTIVE OPERATION WARNING ⚠️
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
+          You are about to DESTROY {{ groups['k8s_cluster'] | length }} VMs:
+          
+          Masters: {{ groups['masters'] | join(', ') }}
+          Workers: {{ groups['workers'] | join(', ') }}
+          
+          This will:
+            • Stop all VMs
+            • Delete all VM data
+            • Cannot be undone
+          
+          Press ENTER to continue or Ctrl+C to abort
+      run_once: true
+      when: not force_destroy | bool
+    
+    - name: Stop VM {{ vm_name }} (ID {{ vm_id }})
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vm_id }}"
+        state: stopped
+        force: true
+      delegate_to: localhost
+      register: vm_stop_result
+      ignore_errors: true
+    
+    - name: Display stop result
+      ansible.builtin.debug:
+        msg: "VM {{ vm_name }} (ID {{ vm_id }}) {{ 'stopped' if vm_stop_result is succeeded else 'already stopped or not found' }}"
+    
+    - name: Wait for VM to stop
+      ansible.builtin.pause:
+        seconds: 5
+      when: vm_stop_result is succeeded
+    
+    - name: Delete VM {{ vm_name }} (ID {{ vm_id }})
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vm_id }}"
+        state: absent
+        force: true
+      delegate_to: localhost
+      register: vm_delete_result
+      ignore_errors: true
+    
+    - name: Display deletion result
+      ansible.builtin.debug:
+        msg: "✅ VM {{ vm_name }} (ID {{ vm_id }}) {{ 'deleted successfully' if vm_delete_result is succeeded else 'deletion failed or VM not found' }}"
+    
+    - name: Final summary
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "VM Destruction Complete"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "VM {{ vm_name }} (ID {{ vm_id }}) has been removed"
+          - "Status: {{ 'Success' if vm_delete_result is succeeded else 'Failed or Not Found' }}"
+      run_once: false
+
+- name: Cleanup Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Display final summary
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "DESTROY OPERATION COMPLETED"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "All VMs have been processed for deletion."
+          - ""
+          - "Check Proxmox to verify VMs are removed."
+          - ""
+          - "To re-provision:"
+          - "  task provision"
+
