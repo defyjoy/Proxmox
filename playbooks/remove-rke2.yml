@@ -1,0 +1,244 @@
+---
+##############################################################################################################
+# RKE2 Kubernetes Cluster Removal Playbook
+# 
+# This playbook safely removes RKE2 from all cluster nodes
+# It uninstalls RKE2, removes configuration, and cleans up data directories
+# VMs are NOT destroyed - only the Kubernetes installation is removed
+##############################################################################################################
+
+- name: Remove RKE2 from all nodes
+  hosts: k8s_cluster
+  become: yes
+  gather_facts: yes
+  tasks:
+    - name: Display removal warning
+      pause:
+        prompt: |
+          ⚠️  WARNING: This will completely remove RKE2 from all nodes!
+          
+          This will:
+          - Stop all RKE2 services
+          - Uninstall RKE2 binaries
+          - Remove all Kubernetes data
+          - Delete configuration files
+          - Clean up network interfaces
+          
+          VMs will remain intact, but Kubernetes will be removed.
+          
+          Press Ctrl+C and then 'A' to abort, or press Enter to continue...
+      when: not (force_remove | default(false) | bool)
+
+- name: Stop and remove RKE2 from worker nodes first
+  hosts: workers
+  become: yes
+  gather_facts: no
+  serial: 1
+  tasks:
+    - name: Check if RKE2 agent is installed
+      stat:
+        path: /usr/local/bin/rke2-agent-uninstall.sh
+      register: rke2_agent_uninstall_script
+
+    - name: Stop RKE2 agent service
+      systemd:
+        name: rke2-agent
+        state: stopped
+      ignore_errors: yes
+      when: rke2_agent_uninstall_script.stat.exists
+
+    - name: Run RKE2 agent uninstall script
+      shell: /usr/local/bin/rke2-agent-uninstall.sh
+      when: rke2_agent_uninstall_script.stat.exists
+      register: agent_uninstall
+      failed_when: false
+
+    - name: Display agent uninstall result
+      debug:
+        msg: "{{ agent_uninstall.stdout_lines | default(['Agent not installed or already removed']) }}"
+
+    - name: Remove RKE2 data directories (agent)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/rancher/rke2
+        - /etc/rancher/rke2
+        - /var/lib/kubelet
+        - /var/lib/cni
+        - /etc/cni
+      ignore_errors: yes
+
+    - name: Clean up network interfaces
+      shell: |
+        ip link delete cni0 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        ip link delete kube-ipvs0 2>/dev/null || true
+        ip link delete dummy0 2>/dev/null || true
+      ignore_errors: yes
+
+    - name: Remove iptables rules
+      shell: |
+        iptables -F
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -X
+      ignore_errors: yes
+
+- name: Stop and remove RKE2 from master nodes
+  hosts: masters
+  become: yes
+  gather_facts: no
+  serial: 1
+  tasks:
+    - name: Check if RKE2 server is installed
+      stat:
+        path: /usr/local/bin/rke2-uninstall.sh
+      register: rke2_server_uninstall_script
+
+    - name: Stop RKE2 server service
+      systemd:
+        name: rke2-server
+        state: stopped
+      ignore_errors: yes
+      when: rke2_server_uninstall_script.stat.exists
+
+    - name: Run RKE2 server uninstall script
+      shell: /usr/local/bin/rke2-uninstall.sh
+      when: rke2_server_uninstall_script.stat.exists
+      register: server_uninstall
+      failed_when: false
+
+    - name: Display server uninstall result
+      debug:
+        msg: "{{ server_uninstall.stdout_lines | default(['Server not installed or already removed']) }}"
+
+    - name: Remove RKE2 data directories (server)
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/rancher/rke2
+        - /etc/rancher/rke2
+        - /var/lib/kubelet
+        - /var/lib/etcd
+        - /var/lib/cni
+        - /etc/cni
+        - /root/.kube
+      ignore_errors: yes
+
+    - name: Clean up network interfaces
+      shell: |
+        ip link delete cni0 2>/dev/null || true
+        ip link delete flannel.1 2>/dev/null || true
+        ip link delete kube-ipvs0 2>/dev/null || true
+        ip link delete dummy0 2>/dev/null || true
+      ignore_errors: yes
+
+    - name: Remove iptables rules
+      shell: |
+        iptables -F
+        iptables -t nat -F
+        iptables -t mangle -F
+        iptables -X
+      ignore_errors: yes
+
+    - name: Remove kubectl alias from bashrc
+      lineinfile:
+        path: /root/.bashrc
+        regexp: "{{ item }}"
+        state: absent
+      loop:
+        - '^alias kubectl='
+        - '^export KUBECONFIG='
+      ignore_errors: yes
+
+- name: Final cleanup on all nodes
+  hosts: k8s_cluster
+  become: yes
+  gather_facts: no
+  tasks:
+    - name: Remove RKE2 binaries
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /usr/local/bin/rke2
+        - /usr/local/bin/rke2-killall.sh
+        - /usr/local/bin/kubectl
+        - /usr/local/bin/crictl
+        - /usr/local/bin/ctr
+      ignore_errors: yes
+
+    - name: Remove systemd service files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/systemd/system/rke2-server.service
+        - /etc/systemd/system/rke2-server.service.env
+        - /etc/systemd/system/rke2-agent.service
+        - /etc/systemd/system/rke2-agent.service.env
+      ignore_errors: yes
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Remove temporary files
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /tmp/rke2-*
+        - /var/tmp/rke2-*
+      ignore_errors: yes
+
+    - name: Check if reboot is needed (optional)
+      stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+      ignore_errors: yes
+
+- name: Display completion summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Display success message
+      debug:
+        msg: |
+          =========================================
+          RKE2 Removal Complete! ✅
+          =========================================
+          
+          RKE2 has been completely removed from all nodes:
+          - 🛑 Services stopped
+          - 🗑️  Binaries removed
+          - 📁 Data directories cleaned
+          - 🌐 Network interfaces cleaned
+          - 🔧 Configuration files removed
+          
+          VMs Status:
+          - ✅ VMs remain running and intact
+          - ✅ SSH access still available
+          - ✅ Ready for fresh RKE2 installation
+          
+          Next Steps:
+          1. To reinstall RKE2: task rke2
+          2. To destroy VMs: task destroy
+          3. To verify cleanup: task ping
+          
+          Note: You may want to reboot nodes for complete cleanup:
+          ansible k8s_cluster -i inventory/hosts.yml -b -a "reboot" 
+
+    - name: Remove local kubeconfig if it exists
+      file:
+        path: "{{ playbook_dir }}/../rke2.yaml"
+        state: absent
+      delegate_to: localhost
+      ignore_errors: yes
+
+    - name: Cleanup complete notification
+      debug:
+        msg: "✅ RKE2 removal completed successfully on all nodes!"
+

@@ -58,14 +58,20 @@ All project documentation is organized in this `docs/` folder for easy access an
    - kubectl configuration
    - Troubleshooting access
 
+10. **[RKE2-CIS-HARDENING.md](RKE2-CIS-HARDENING.md)** - CIS security hardening
+    - CIS profile configuration
+    - Version-specific settings
+    - Common issues and solutions
+    - Compliance verification
+
 ### 🔧 Maintenance & Troubleshooting
 
-10. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Debug and common issues
+11. **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Debug and common issues
     - Common problems and solutions
     - Diagnostic commands
     - Error resolution
 
-11. **[FIXED-README.md](FIXED-README.md)** - Recent fixes and updates
+12. **[FIXED-README.md](FIXED-README.md)** - Recent fixes and updates
     - Latest bug fixes
     - Implementation corrections
     - Update notes
@@ -99,9 +105,11 @@ All project documentation is organized in this `docs/` folder for easy access an
 ```
 docs/
 ├── AUTHENTICATION.md                 # Security setup
+├── DOCUMENTATION-INDEX.md            # This file - Navigation hub
 ├── FIXED-README.md                   # Recent fixes
 ├── KUBECONFIG-USAGE.md               # Kubectl access guide
 ├── QUICKSTART.md                     # Quick start guide
+├── RKE2-CIS-HARDENING.md             # CIS security hardening
 ├── RKE2-DEPLOYMENT.md                # Complete RKE2 guide
 ├── RKE2-IMPLEMENTATION-SUMMARY.md    # Architecture details
 ├── RKE2-QUICKSTART.md                # RKE2 quick start
@@ -130,6 +138,9 @@ docs/
 
 ### "I want to understand the architecture"
 → [RKE2-IMPLEMENTATION-SUMMARY.md](RKE2-IMPLEMENTATION-SUMMARY.md)
+
+### "I need CIS security hardening"
+→ [RKE2-CIS-HARDENING.md](RKE2-CIS-HARDENING.md)
 
 ## 🔗 External Resources
 
@@ -168,7 +179,7 @@ When adding new documentation:
 ---
 
 **Last Updated**: October 12, 2025  
-**Total Documents**: 11 guides covering all aspects of the project
+**Total Documents**: 13 guides covering all aspects of the project
 
 Happy deploying! 🚀
 

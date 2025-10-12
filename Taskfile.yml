@@ -173,6 +173,19 @@ tasks:
       - echo "Running RKE2 playbook in check mode..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --check
 
+  rke2-remove:
+    desc: Remove RKE2 from all nodes (keeps VMs intact)
+    cmds:
+      - echo "⚠️  Removing RKE2 from all cluster nodes..."
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/remove-rke2.yml
+
+
+  rke2-remove-force:
+    desc: Remove RKE2 without confirmation prompt (DANGEROUS!)
+    cmds:
+      - echo "⚠️  FORCING RKE2 REMOVAL - NO CONFIRMATION!"
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/remove-rke2.yml -e "force_remove=true"
+
   all:
     desc: Execute all playbooks in sequence (provision + RKE2)
     cmds:
@@ -260,6 +273,7 @@ tasks:
           task provision      # Provision VMs from template
           task destroy        # Destroy all VMs (with confirmation)
           task rke2           # Install RKE2 cluster
+          task rke2-remove    # Remove RKE2 (keeps VMs)
           task all            # Run both playbooks
         
         Testing & Validation:
@@ -267,6 +281,12 @@ tasks:
           task syntax         # Check playbook syntax
           task provision-check # Dry-run provision
           task rke2-check     # Dry-run RKE2
+        
+        RKE2 Management:
+          task rke2           # Deploy RKE2 cluster
+          task rke2-check     # Dry-run RKE2 deployment
+          task rke2-remove    # Remove RKE2 from all nodes
+          task rke2-remove-force # Remove without confirmation
         
         Inventory:
           task list-hosts     # List all inventory hosts

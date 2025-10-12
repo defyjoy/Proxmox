@@ -126,6 +126,8 @@ task verify-proxmox        # Check Proxmox connection and list templates
 task rke2                  # Deploy RKE2 cluster on provisioned VMs
 task cluster               # Full deployment (install + provision + RKE2)
 task rke2-check            # Dry-run RKE2 deployment
+task rke2-remove           # Remove RKE2 from all nodes (keeps VMs)
+task rke2-remove-force     # Remove RKE2 without confirmation
 
 # 🔍 Diagnostics & Testing
 task ping                  # Test SSH connectivity to all hosts
@@ -259,9 +261,17 @@ task vault-password-file   # Save password (no more prompts)
 
 **🗑️ Cleanup and rebuild:**
 ```bash
+# Remove only RKE2 (keeps VMs intact)
+task rke2-remove    # Uninstall RKE2 from all nodes
+task rke2           # Reinstall RKE2
+
+# Complete rebuild (destroy VMs + recreate)
 task destroy   # Delete all VMs
 task provision # Recreate VMs
-task rke2      # Redeploy cluster
+task rke2      # Deploy cluster
+
+# Quick reset (remove RKE2 + redeploy)
+task rke2-remove && task rke2
 ```
 
 **🔍 Diagnostics:**
@@ -370,6 +380,7 @@ task vault-view  # Verify credentials
 - **[docs/RKE2-QUICKSTART.md](docs/RKE2-QUICKSTART.md)** - 🚀 RKE2 quick start
 - **[docs/RKE2-DEPLOYMENT.md](docs/RKE2-DEPLOYMENT.md)** - 📘 Complete RKE2 deployment guide
 - **[docs/RKE2-SETUP.md](docs/RKE2-SETUP.md)** - ⚙️ RKE2 setup and prerequisites
+- **[docs/RKE2-CIS-HARDENING.md](docs/RKE2-CIS-HARDENING.md)** - 🔒 CIS security hardening guide
 - **[docs/RKE2-IMPLEMENTATION-SUMMARY.md](docs/RKE2-IMPLEMENTATION-SUMMARY.md)** - 🏗️ Implementation architecture
 - **[docs/KUBECONFIG-USAGE.md](docs/KUBECONFIG-USAGE.md)** - 🔑 Kubeconfig download and usage
 - **[docs/FIXED-README.md](docs/FIXED-README.md)** - 🔧 Recent fixes and updates
