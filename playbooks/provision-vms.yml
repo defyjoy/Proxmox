@@ -104,16 +104,118 @@
     - name: Gather facts after provisioning
       ansible.builtin.setup:
     
-    - name: Display provisioned VM information
+    - name: Collect VM information
+      ansible.builtin.set_fact:
+        vm_info:
+          name: "{{ inventory_hostname }}"
+          vm_id: "{{ vm_id | default('N/A') }}"
+          ip_address: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+          kernel: "{{ ansible_kernel }}"
+          architecture: "{{ ansible_architecture }}"
+          cpu_cores: "{{ ansible_processor_vcpus }}"
+          memory_mb: "{{ ansible_memtotal_mb }}"
+          uptime_minutes: "{{ ansible_uptime_seconds | default(0) | int // 60 }}"
+          ssh_status: "✅ Ready"
+          group: "{{ 'master' if inventory_hostname in groups['masters'] else 'worker' }}"
+    
+    - name: Display individual VM information
       ansible.builtin.debug:
         msg:
           - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          - "✅ VM Provisioned Successfully"
+          - "✅ {{ vm_info.name }} ({{ vm_info.group | upper }})"
           - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-          - "Hostname: {{ inventory_hostname }}"
-          - "IP Address: {{ ansible_default_ipv4.address | default(ansible_host) }}"
-          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
-          - "Kernel: {{ ansible_kernel }}"
-          - "Uptime: {{ ansible_uptime_seconds | default(0) | int // 60 }} minutes"
-          - "SSH Status: ✅ Ready"
+          - "VM ID: {{ vm_info.vm_id }}"
+          - "IP: {{ vm_info.ip_address }}"
+          - "FQDN: {{ vm_info.fqdn }}"
+          - "OS: {{ vm_info.os }}"
+          - "Kernel: {{ vm_info.kernel }}"
+          - "CPU: {{ vm_info.cpu_cores }} cores"
+          - "RAM: {{ vm_info.memory_mb }} MB"
+          - "Uptime: {{ vm_info.uptime_minutes }} minutes"
+          - "SSH: {{ vm_info.ssh_status }}"
+
+- name: Post-provisioning Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Gather all VM facts
+      ansible.builtin.set_fact:
+        all_vms_info: "{{ groups['k8s_cluster'] | map('extract', hostvars) | list }}"
+      run_once: true
+    
+    - name: Display complete cluster summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║           🎉 PROVISIONING COMPLETED SUCCESSFULLY 🎉            ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "📊 CLUSTER SUMMARY:"
+          - "  Total VMs: {{ groups['k8s_cluster'] | length }}"
+          - "  Master Nodes: {{ groups['masters'] | length }}"
+          - "  Worker Nodes: {{ groups['workers'] | length }}"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "🖥️  MASTER NODES"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+    
+    - name: Display master nodes info
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+      loop: "{{ groups['masters'] }}"
+      run_once: true
+    
+    - name: Worker nodes header
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "⚙️  WORKER NODES"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+    
+    - name: Display worker nodes info
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+      loop: "{{ groups['workers'] }}"
+      run_once: true
+    
+    - name: Final summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "📋 NEXT STEPS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "✅ All VMs are provisioned and ready!"
+          - ""
+          - "Verify SSH connectivity:"
+          - "  task ping"
+          - ""
+          - "Deploy RKE2 Kubernetes cluster:"
+          - "  task rke2"
+          - ""
+          - "Access VMs via SSH:"
+          - "  ssh -i ~/.ssh/proxmox root@192.168.68.100  # master-01"
+          - "  ssh -i ~/.ssh/proxmox root@192.168.68.110  # worker-01"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
 

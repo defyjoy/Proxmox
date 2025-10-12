@@ -17,7 +17,7 @@ Your RKE2 Provisioner is ready with:
 
 ## 🎯 Final Steps to Clone VMs
 
-### Step 1: Find Your Template Name
+### Step 1: Verify Template Exists
 
 Your template has ID **9000** but needs its **NAME** for cloning.
 
@@ -31,8 +31,7 @@ Your template has ID **9000** but needs its **NAME** for cloning.
 
 **Option B: Check via SSH** (if you have access)
 ```bash
-ssh joydeep@192.168.68.65 "qm list | grep 9000"
-# Output will show: 9000   template-name   ...
+task verify-proxmox  # Lists all VMs/templates
 ```
 
 **Option C: Use diagnostic tool**
@@ -64,7 +63,7 @@ task vault-password-file
 # Just use: task provision (will ask for password)
 ```
 
-### Step 4: Clone and Start VMs
+### Step 3: Clone and Start VMs
 
 ```bash
 # Dry-run first (recommended)
@@ -217,13 +216,13 @@ task verify-proxmox
 # 3. Save vault password (optional)
 task vault-password-file
 
-# 4. Clone and start VMs
+# 3. Clone and start VMs
 task provision
 
-# 5. Verify VMs are accessible
+# 4. Verify VMs are accessible
 task ping
 
-# 6. Deploy RKE2
+# 5. Deploy RKE2
 task rke2
 ```
 
@@ -232,8 +231,8 @@ task rke2
 Once you update the template name, run:
 
 ```bash
-task provision
+task provision  # Clone and start 6 VMs
 ```
 
-Your 6 VMs will be cloned, configured, and started automatically! 🎉
+All VMs will be cloned, configured, and started automatically! 🎉
 

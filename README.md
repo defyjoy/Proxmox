@@ -4,29 +4,22 @@ Automated provisioning and deployment of RKE2 Kubernetes clusters on Proxmox VE 
 
 ## Overview
 
-This project automates the complete lifecycle of deploying a production-ready RKE2 Kubernetes cluster on Proxmox:
+Complete automation for deploying production-ready RKE2 Kubernetes clusters on Proxmox:
 
-1. **Provision VMs** - Clone VMs from a Proxmox template
-2. **Configure Networking** - Set up static IPs and cloud-init
-3. **Deploy RKE2** - Install and configure RKE2 Kubernetes cluster
+1. **Provision VMs** - Clone from template, configure resources
+2. **Configure Network** - Static IPs via cloud-init
+3. **Deploy RKE2** - Install Kubernetes cluster
+4. **Manage Lifecycle** - Create, destroy, rebuild
 
 ## Prerequisites
 
-### Required Software
-
 - **Ansible** >= 2.10
-- **Task** (recommended) or **Make**
-- **Python** >= 3.8
-- **Proxmox VE** cluster with API access
+- **Task** >= 3.0 (task runner)
+- **Python** >= 3.8 with `proxmoxer` and `requests` libraries
+- **Proxmox VE** with API access
+- **VM template** (ID: 9000) with cloud-init support
 
-### Proxmox Requirements
-
-- VM template (ID: 9000) configured with:
-  - Cloud-init support
-  - Desired OS (Ubuntu/Debian recommended)
-  - Required packages (qemu-guest-agent, etc.)
-
-### Install Task (Optional but Recommended)
+### Install Task
 
 **macOS:**
 ```bash
@@ -38,384 +31,252 @@ brew install go-task
 sh -c "$(curl --location https://taskfile.dev/install.sh)" -- -d -b /usr/local/bin
 ```
 
-**Or use Make** - Already available on most systems
-
 ## Quick Start
 
 ### 1. Install Dependencies
 
 ```bash
 task install
-# or
-make install
 ```
 
-### 2. Configure Inventory
+### 2. Configure Authentication
 
-Edit `inventory/hosts.yml` with your target VMs' details:
-- Hostnames
-- IP addresses
-- SSH credentials
+**Create Proxmox API Token:**
+- Proxmox UI → Datacenter → Permissions → API Tokens → Add
+- Save token ID and secret
 
-### 3. Configure Authentication
-
-**Create Proxmox API Token** in Proxmox UI:
-- Datacenter → Permissions → API Tokens → Add
-- User: `root@pam`, Token ID: `provisioner`
-
-**Store credentials in encrypted vault**:
-
+**Store credentials securely:**
 ```bash
 task vault-create
-# Enter your credentials when prompted
-# Choose a strong vault password
+# Enter API token credentials
+# Set vault password
 ```
 
-**Ensure SSH key is configured**:
+**Save vault password (optional, for convenience):**
+```bash
+task vault-password-file
+```
+
+### 3. Update Configuration
+
+**Verify settings in `group_vars/all/vars.yml`:**
+- Proxmox host IP
+- Node name
+- SSH key paths
+
+### 4. Deploy Cluster
 
 ```bash
-# Generate if needed
-ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa
-
-# Add public key to VM template cloud-init
-cat ~/.ssh/id_rsa.pub
+task provision  # Clone and start 6 VMs
+task ping      # Verify connectivity
+task rke2      # Deploy Kubernetes
 ```
 
-### 4. Deploy Complete Cluster
-
+**Or all in one:**
 ```bash
 task cluster
-# Enter your vault password when prompted
 ```
 
-This will:
-1. Install Ansible collections
-2. Provision 6 VMs (3 masters + 3 workers) from template 9000
-3. Wait for VMs to be ready
-4. Install and configure RKE2 cluster
-
-## Usage
-
-### Using Task (Recommended)
+## Available Commands
 
 ```bash
-# Show all available commands
+# View all commands
 task --list
 
-# Show detailed help
-task help
+# Vault management
+task vault-create           # Create encrypted vault
+task vault-password-file    # Save vault password locally
+task vault-edit            # Edit credentials
 
-# Vault management (first time setup)
-task vault-create      # Create encrypted vault
-task vault-edit        # Edit credentials
-task vault-view        # View vault contents
+# VM lifecycle
+task provision             # Clone and start VMs
+task destroy              # Delete all VMs (with confirmation)
+task verify-proxmox       # Check Proxmox and list templates
 
-# Individual playbooks (prompts for vault password)
-task provision         # Provision VMs only
-task rke2             # Install RKE2 only
-task all              # Run both playbooks
+# Kubernetes
+task rke2                 # Deploy RKE2 cluster
+task cluster              # Full deployment (provision + RKE2)
 
-# Testing and validation
-task ping             # Test SSH connectivity
-task syntax           # Check playbook syntax
-task provision-check  # Dry-run provision
-task rke2-check       # Dry-run RKE2
-
-# Cluster operations
-task cluster          # Full deployment
-task list-hosts       # List inventory hosts
-```
-
-### Using Make
-
-```bash
-# Show all available commands
-make help
-
-# Individual playbooks
-make provision         # Provision VMs only
-make rke2             # Install RKE2 only
-make all              # Run both playbooks
-
-# Testing and validation
-make ping             # Test SSH connectivity
-make syntax           # Check playbook syntax
-make provision-check  # Dry-run provision
-make rke2-check       # Dry-run RKE2
-
-# Cluster operations
-make cluster          # Full deployment
-make list-hosts       # List inventory hosts
+# Diagnostics
+task ping                 # Test SSH connectivity
+task syntax               # Check playbook syntax
+task debug-vault          # Show vault variables
 ```
 
 ## Project Structure
 
 ```
-.
-├── Taskfile.yml              # Task runner configuration
-├── Makefile                  # Make configuration
-├── requirements.yml          # Ansible collection dependencies
-├── ansible.cfg              # Ansible configuration (optional)
-├── inventory/
-│   └── hosts.yml            # Inventory file with host definitions
+├── Taskfile.yml                      # Task automation (30+ commands)
+├── ansible.cfg                       # Ansible configuration
+├── requirements.yml                  # Collection dependencies
+├── inventory/hosts.yml               # 6 VMs defined
+├── group_vars/all/
+│   ├── vars.yml                     # Proxmox & SSH settings
+│   └── vault.yml                    # Encrypted API tokens
 ├── playbooks/
-│   ├── provision-vms.yml    # VM provisioning playbook
-│   └── rke2-ansible.yaml    # RKE2 installation playbook
+│   ├── provision-vms.yml            # Create VMs
+│   ├── destroy-vms.yml              # Delete VMs
+│   ├── rke2-ansible.yaml            # Deploy Kubernetes
+│   └── verify-proxmox.yml           # Diagnostics
 ├── roles/
-│   └── provision-vms/       # VM provisioning role
-│       ├── defaults/
-│       │   └── main.yml     # Default variables
-│       ├── tasks/
-│       │   ├── main.yml     # Main tasks
-│       │   └── clone_vm.yml # Clone task
-│       ├── meta/
-│       │   └── main.yml     # Role metadata
-│       └── README.md        # Role documentation
-└── defaults/
-    └── main.yml             # RKE2 default configuration
+│   ├── provision-vms/               # VM cloning role
+│   └── destroy-vms/                 # VM deletion role
+└── defaults/main.yml                # RKE2 configuration
 ```
 
 ## Configuration
 
-### Inventory Configuration
+### Inventory (6 VMs)
 
-The inventory file (`inventory/hosts.yml`) defines your cluster topology:
+**Masters:** 100-102 → 192.168.68.100-102  
+**Workers:** 110-112 → 192.168.68.110-112
 
+Edit `inventory/hosts.yml` to change IPs or add/remove nodes.
+
+### Proxmox Settings
+
+Edit `group_vars/all/vars.yml`:
 ```yaml
-all:
-  children:
-    k8s_cluster:
-      children:
-        masters:           # Control plane nodes
-          hosts:
-            master-01:
-              ansible_host: 192.168.68.100
-            master-02:
-              ansible_host: 192.168.68.101
-            master-03:
-              ansible_host: 192.168.68.102
-        
-        workers:           # Worker nodes
-          hosts:
-            worker-01:
-              ansible_host: 192.168.68.110
-            worker-02:
-              ansible_host: 192.168.68.111
-            worker-03:
-              ansible_host: 192.168.68.112
+proxmox_host: 192.168.68.65
+proxmox_node: pve-01
+ssh_public_key_file: ~/.ssh/proxmox.pub
 ```
 
-### Proxmox Configuration
-
-Edit `playbooks/provision-vms.yml` to configure:
-
+Edit `playbooks/provision-vms.yml`:
 ```yaml
-vars:
-  proxmox_host: 192.168.68.65        # Proxmox host IP
-  proxmox_api_user: root@pam          # API user
-  proxmox_node: pve                   # Proxmox node name
-  proxmox_template_id: 9000           # Template VM ID
-  vm_cores: 2                         # CPU cores per VM
-  vm_memory: 4096                     # RAM in MB
-  vm_disk_size: 32                    # Disk size in GB
-  vm_storage: local-lvm               # Storage name
+proxmox_template_id: 9000  # Your template VM ID
+vm_cores: 2
+vm_memory: 4096
+vm_storage: local
 ```
 
-### RKE2 Configuration
+### Vault (Encrypted Credentials)
 
-Edit `defaults/main.yml` to customize RKE2:
-
+`group_vars/all/vault.yml` contains:
 ```yaml
-rke2_version: v1.25.3+rke2r1
-rke2_token: defaultSecret12345
-rke2_ha_mode: false
-rke2_cni: [canal]
-# ... many more options available
+vault_proxmox_api_token_id: "user@pam!token"
+vault_proxmox_api_token_secret: "secret"
 ```
 
-## VM ID Assignment
+## Common Workflows
 
-VMs are automatically assigned IDs:
-- **Master nodes**: 200, 201, 202
-- **Worker nodes**: 210, 211, 212
-
-## Workflows
-
-### Standard Deployment
-
+**Full deployment:**
 ```bash
-# Full deployment from scratch
-task install
-task provision
-task ping
-task rke2
+task cluster  # provision + RKE2
 ```
 
-### Re-deploy RKE2 Only
-
+**Step by step:**
 ```bash
-# Re-install RKE2 on existing VMs
-task rke2
+task provision  # Clone VMs
+task ping      # Verify SSH
+task rke2      # Deploy K8s
 ```
 
-### Check Before Apply
-
+**Cleanup and rebuild:**
 ```bash
-# Dry-run to see what would change
-task provision-check
-task rke2-check
+task destroy   # Delete VMs
+task provision # Recreate
 ```
 
-### Troubleshooting
-
+**Diagnostics:**
 ```bash
-# Test connectivity
-task ping
-
-# List all hosts
-task list-hosts
-
-# Gather system facts
-task facts
-
-# Check playbook syntax
-task syntax
+task verify-proxmox  # Check Proxmox
+task debug-vault     # Show credentials (masked)
+task list-hosts      # Show inventory
 ```
 
-## Authentication
+## Authentication (100% Key-Based)
 
-This project uses **100% key-based authentication** - no passwords:
+### Proxmox API - Encrypted Vault
 
-### 1. Proxmox API Authentication - Ansible Vault (Encrypted)
+Credentials stored in `group_vars/all/vault.yml` (AES256 encrypted):
+- `vault_proxmox_api_token_id`
+- `vault_proxmox_api_token_secret`
 
-**Create and store credentials securely**:
+Managed via: `task vault-create`, `task vault-edit`, `task vault-view`
 
-```bash
-# First time setup
-task vault-create
+### VM SSH Access - Key Pairs
 
-# Edit existing vault
-task vault-edit
+**Public key** → Injected via cloud-init  
+**Private key** → Used by Ansible
 
-# View vault contents
-task vault-view
-```
-
-Credentials are stored encrypted in `group_vars/all/vault.yml`:
+Configured in `group_vars/all/vars.yml`:
 ```yaml
-vault_proxmox_api_token_id: "root@pam!provisioner"
-vault_proxmox_api_token_secret: "your-secret"
+ssh_public_key_file: ~/.ssh/proxmox.pub
+ssh_private_key_file: ~/.ssh/proxmox
 ```
 
-### 2. SSH Key Authentication
+## Network
 
-Configure in `inventory/hosts.yml`:
-
-```yaml
-k8s_cluster:
-  vars:
-    ansible_user: root
-    ansible_ssh_private_key_file: ~/.ssh/id_rsa
-```
-
-SSH public key is automatically loaded from `~/.ssh/id_rsa.pub` and injected into VMs via cloud-init.
-
-**Detailed guides**:
-- [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) - Complete authentication guide
-- [docs/VAULT.md](docs/VAULT.md) - Ansible Vault usage and advanced features
-
-## Network Configuration
-
-The default configuration uses:
-- **Network**: 192.168.68.0/24
+- **Subnet**: 192.168.68.0/24
 - **Gateway**: 192.168.68.1
-- **Masters**: 192.168.68.100-102
-- **Workers**: 192.168.68.110-112
+- **Masters**: .100-.102 (VM IDs: 100-102)
+- **Workers**: .110-.112 (VM IDs: 110-112)
 
-Update `inventory/hosts.yml` and `playbooks/provision-vms.yml` to match your network.
+## Access Kubernetes Cluster
 
-## Accessing the Cluster
+After RKE2 deployment:
 
-After deployment, the kubeconfig can be downloaded:
-
-1. Set in `defaults/main.yml`:
-```yaml
-rke2_download_kubeconf: true
-rke2_download_kubeconf_path: /tmp
-```
-
-2. Copy kubeconfig:
 ```bash
-scp master-01:/etc/rancher/rke2/rke2.yaml ~/.kube/config
-# Update server IP in the config
+# Copy kubeconfig from master
+scp -i ~/.ssh/proxmox root@192.168.68.100:/etc/rancher/rke2/rke2.yaml ~/.kube/config
+
+# Update server IP
 sed -i 's/127.0.0.1/192.168.68.100/g' ~/.kube/config
-```
 
-3. Verify:
-```bash
+# Verify
 kubectl get nodes
-kubectl get pods -A
 ```
 
 ## Cleanup
 
 ```bash
-# Remove temporary files
-task clean
-
-# or
-make clean
+task destroy  # Delete all VMs
+task clean    # Remove temp files
 ```
-
-To destroy VMs, use Proxmox UI or CLI.
 
 ## Troubleshooting
 
-### Common Issues
+**Template not found:**
+```bash
+task verify-proxmox  # Lists all templates
+```
 
-1. **Connection timeout**
-   - Verify network connectivity: `task ping`
-   - Check firewall rules
-   - Ensure SSH keys are configured
+**SSH connection fails:**
+```bash
+ssh -i ~/.ssh/proxmox root@192.168.68.100  # Test manually
+```
 
-2. **Proxmox API errors**
-   - Verify credentials: `echo $PROXMOX_PASSWORD`
-   - Test API access manually
-   - Check Proxmox user permissions
+**Vault errors:**
+```bash
+task vault-view  # Verify credentials
+```
 
-3. **VM provisioning fails**
-   - Verify template 9000 exists
-   - Check storage availability
-   - Ensure sufficient resources
+**Cloud-init stuck:**
+- Check template has cloud-init installed
+- Verify SSH key is in template's cloud-init config
 
-4. **RKE2 installation fails**
-   - Check system requirements
-   - Verify internet connectivity (if not airgap)
-   - Review logs: `/var/log/rke2.log`
+## Documentation
 
-## Contributing
+- **QUICKSTART.md** - Step-by-step deployment guide
+- **SETUP.md** - Complete setup instructions
+- **docs/VAULT.md** - Ansible Vault management
+- **docs/AUTHENTICATION.md** - Security and auth setup
+- **TROUBLESHOOTING.md** - Debug and common issues
 
-Contributions welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Test your changes
-4. Submit a pull request
+## Features
 
-## License
+✅ Token-based Proxmox API auth (encrypted vault)  
+✅ SSH key authentication (no passwords)  
+✅ Automated VM cloning and configuration  
+✅ Cloud-init for network setup  
+✅ Complete lifecycle management  
+✅ 30+ Taskfile commands  
+✅ Comprehensive documentation
 
-MIT License - See LICENSE file for details
+## Links
 
-## Support
-
-For issues and questions:
-- Create an issue in the repository
-- Check existing documentation
-- Review Ansible and RKE2 official docs
-
-## References
-
-- [RKE2 Documentation](https://docs.rke2.io/)
-- [Proxmox VE API](https://pve.proxmox.com/wiki/Proxmox_VE_API)
-- [Ansible Documentation](https://docs.ansible.com/)
-- [Task Documentation](https://taskfile.dev/)
+- [RKE2 Docs](https://docs.rke2.io/)
+- [Proxmox API](https://pve.proxmox.com/wiki/Proxmox_VE_API)
+- [Task](https://taskfile.dev/)
 
