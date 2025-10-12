@@ -293,7 +293,7 @@ rke2_agents_group_name: workers
 # Configure Ingress Controller (allowed values: ingress-nginx, traefik, none)
 # Note: This is a role configuration option, not a direct RKE2 flag
 # To disable ingress completely, add 'rke2-ingress-nginx' to rke2_disable list instead
-rke2_ingress_controller: ingress-nginx
+rke2_ingress_controller: none
 
 # (Optional) Configure nginx via HelmChartConfig: https://docs.rke2.io/networking/networking_services#nginx-ingress-controller
 # rke2_ingress_nginx_values:
