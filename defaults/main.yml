@@ -102,7 +102,7 @@ rke2_agent_node_taints: []
 rke2_token: defaultSecret12345
 
 # RKE2 version
-rke2_version: v1.25.3+rke2r1
+rke2_version: v1.31.13+rke2r1
 
 # URL to RKE2 repository
 rke2_channel_url: https://update.rke2.io/v1-release/channels
@@ -159,6 +159,7 @@ rke2_channel: stable
 
 # Do not deploy packaged components and delete any deployed components
 # Valid items: rke2-canal, rke2-coredns, rke2-ingress-nginx, rke2-metrics-server
+# When using CIS profile, it's recommended to control ingress deployment explicitly
 rke2_disable: []
 
 # Option to disable kube-proxy
@@ -232,16 +233,18 @@ rke2_cni: [canal]
 
 # Validate system configuration against the selected benchmark
 # (Supported value is "cis-1.23" or eventually "cis-1.6" if you are running RKE2 prior 1.25 or "cis" for rke2 1.30+)
-rke2_cis_profile: ""
+# For RKE2 v1.31.x, use "cis"
+rke2_cis_profile: "cis"
 
 # Download Kubernetes config file to the Ansible controller
-rke2_download_kubeconf: false
+rke2_download_kubeconf: true
 
 # Name of the Kubernetes config file will be downloaded to the Ansible controller
 rke2_download_kubeconf_file_name: rke2.yaml
 
 # Destination directory where the Kubernetes config file will be downloaded to the Ansible controller
-rke2_download_kubeconf_path: /tmp
+# Downloads to the Ansible workspace folder for easy access
+rke2_download_kubeconf_path: "{{ playbook_dir }}/.."
 
 # Default Ansible Inventory Group name for RKE2 cluster
 rke2_cluster_group_name: k8s_cluster
@@ -288,7 +291,9 @@ rke2_agents_group_name: workers
 #   - "bind-address=0.0.0.0"
 
 # Configure Ingress Controller (allowed values: ingress-nginx, traefik, none)
-rke2_ingress_controller: ingress-nginx
+# Note: This is a role configuration option, not a direct RKE2 flag
+# To disable ingress completely, add 'rke2-ingress-nginx' to rke2_disable list instead
+rke2_ingress_controller: none
 
 # (Optional) Configure nginx via HelmChartConfig: https://docs.rke2.io/networking/networking_services#nginx-ingress-controller
 # rke2_ingress_nginx_values:

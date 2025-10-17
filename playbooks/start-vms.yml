@@ -1,0 +1,231 @@
+---
+- name: Start VMs in Proxmox if they are stopped
+  hosts: k8s_cluster
+  gather_facts: false
+  become: false  # Proxmox API calls don't need privilege escalation
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    # Master nodes get IDs starting from 100
+    # Worker nodes get IDs starting from 110
+    master_vm_id_start: 100
+    worker_vm_id_start: 110
+  
+  tasks:
+    - name: Set VM ID for master nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ master_vm_id_start + groups['masters'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['masters']
+    
+    - name: Set VM ID for worker nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ worker_vm_id_start + groups['workers'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['workers']
+    
+    - name: Check VM current status
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vm_id }}"
+        state: current
+      delegate_to: localhost
+      register: vm_status
+      ignore_errors: true
+    
+    - name: Display VM status
+      ansible.builtin.debug:
+        msg: "VM {{ vm_name }} (ID {{ vm_id }}) current status: {{ vm_status.status | default('NOT_FOUND') }}"
+    
+    - name: Start VM if stopped
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vm_id }}"
+        state: started
+      delegate_to: localhost
+      register: vm_start_result
+      when: vm_status.status | default('') != 'running'
+    
+    - name: Skip starting VM if already running
+      ansible.builtin.debug:
+        msg: "VM {{ vm_name }} (ID {{ vm_id }}) is already running - skipping"
+      when: vm_status.status | default('') == 'running'
+    
+    - name: Wait for VM network to be reachable after starting
+      become: false
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        delay: 10
+        timeout: 120
+        state: started
+      delegate_to: localhost
+      when: 
+        - vm_start_result is defined
+        - vm_start_result is changed
+    
+    - name: Display start result
+      ansible.builtin.debug:
+        msg: "✅ VM {{ vm_name }} (ID {{ vm_id }}) started successfully"
+      when: 
+        - vm_start_result is defined
+        - vm_start_result is changed
+
+- name: Post-start verification
+  hosts: k8s_cluster
+  gather_facts: false
+  become: false
+  
+  vars:
+    # Master nodes get IDs starting from 100
+    # Worker nodes get IDs starting from 110
+    master_vm_id_start: 100
+    worker_vm_id_start: 110
+  
+  tasks:
+    - name: Set VM ID for master nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ master_vm_id_start + groups['masters'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['masters']
+    
+    - name: Set VM ID for worker nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ worker_vm_id_start + groups['workers'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['workers']
+    
+    - name: Wait for SSH to be ready
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 20
+        sleep: 5
+        delay: 10
+        timeout: 180
+    
+    - name: Gather facts after starting
+      ansible.builtin.setup:
+    
+    - name: Collect VM status information
+      ansible.builtin.set_fact:
+        vm_info:
+          name: "{{ inventory_hostname }}"
+          vm_id: "{{ vm_id | default('N/A') }}"
+          ip_address: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+          kernel: "{{ ansible_kernel }}"
+          architecture: "{{ ansible_architecture }}"
+          cpu_cores: "{{ ansible_processor_vcpus }}"
+          memory_mb: "{{ ansible_memtotal_mb }}"
+          uptime_minutes: "{{ ansible_uptime_seconds | default(0) | int // 60 }}"
+          ssh_status: "✅ Ready"
+          group: "{{ 'master' if inventory_hostname in groups['masters'] else 'worker' }}"
+    
+    - name: Display individual VM status
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "✅ {{ vm_info.name }} ({{ vm_info.group | upper }}) - RUNNING"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "VM ID: {{ vm_info.vm_id }}"
+          - "IP: {{ vm_info.ip_address }}"
+          - "FQDN: {{ vm_info.fqdn }}"
+          - "OS: {{ vm_info.os }}"
+          - "Kernel: {{ vm_info.kernel }}"
+          - "CPU: {{ vm_info.cpu_cores }} cores"
+          - "RAM: {{ vm_info.memory_mb }} MB"
+          - "Uptime: {{ vm_info.uptime_minutes }} minutes"
+          - "SSH: {{ vm_info.ssh_status }}"
+
+- name: Start VMs Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Display complete cluster status
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║           🚀 VM START OPERATION COMPLETED 🚀                  ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "📊 CLUSTER STATUS:"
+          - "  Total VMs: {{ groups['k8s_cluster'] | length }}"
+          - "  Master Nodes: {{ groups['masters'] | length }}"
+          - "  Worker Nodes: {{ groups['workers'] | length }}"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "🖥️  MASTER NODES"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+    
+    - name: Display master nodes status
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+          - "  Status: ✅ RUNNING"
+      loop: "{{ groups['masters'] }}"
+      run_once: true
+    
+    - name: Worker nodes header
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "⚙️  WORKER NODES"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+    
+    - name: Display worker nodes status
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+          - "  Status: ✅ RUNNING"
+      loop: "{{ groups['workers'] }}"
+      run_once: true
+    
+    - name: Final summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "📋 NEXT STEPS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "✅ All VMs are now running and ready!"
+          - ""
+          - "Test SSH connectivity:"
+          - "  task ping"
+          - ""
+          - "Deploy RKE2 Kubernetes cluster:"
+          - "  task rke2"
+          - ""
+          - "Access VMs via SSH:"
+          - "  ssh -i ~/.ssh/proxmox root@192.168.68.100  # master-01"
+          - "  ssh -i ~/.ssh/proxmox root@192.168.68.110  # worker-01"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
