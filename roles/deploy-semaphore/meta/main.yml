@@ -1,0 +1,24 @@
+---
+galaxy_info:
+  author: Proxmox Homelab
+  description: Deploy Semaphore CI/CD on Proxmox VMs
+  company: Personal Homelab
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+  galaxy_tags:
+    - semaphore
+    - ci-cd
+    - deployment
+    - proxmox
+    - automation
+
+dependencies: []

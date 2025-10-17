@@ -1,0 +1,26 @@
+---
+- name: Start Semaphore service
+  ansible.builtin.systemd:
+    name: semaphore
+    state: "{{ semaphore_service_state }}"
+    enabled: "{{ semaphore_service_enabled }}"
+    daemon_reload: true
+
+- name: Wait for Semaphore to start
+  ansible.builtin.wait_for:
+    port: "{{ semaphore_port }}"
+    host: "{{ semaphore_interface }}"
+    delay: 5
+    timeout: 60
+
+- name: Check Semaphore service status
+  ansible.builtin.systemd:
+    name: semaphore
+  register: semaphore_service_status
+
+- name: Display Semaphore service status
+  ansible.builtin.debug:
+    msg:
+      - "Semaphore service status: {{ semaphore_service_status.status.ActiveState }}"
+      - "Service enabled: {{ semaphore_service_status.status.UnitFileState }}"
+      - "Access URL: http://{{ ansible_default_ipv4.address | default(ansible_host) }}:{{ semaphore_port }}"

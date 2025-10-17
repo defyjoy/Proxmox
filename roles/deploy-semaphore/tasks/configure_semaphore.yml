@@ -1,0 +1,32 @@
+---
+- name: Generate Semaphore configuration
+  ansible.builtin.template:
+    src: semaphore_config.json.j2
+    dest: "{{ semaphore_config_dir }}/config.json"
+    owner: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    mode: '0600'
+    backup: true
+
+- name: Set environment variables for Semaphore
+  ansible.builtin.template:
+    src: semaphore_env.j2
+    dest: "{{ semaphore_config_dir }}/semaphore.env"
+    owner: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    mode: '0600'
+    backup: true
+
+- name: Initialize Semaphore database
+  ansible.builtin.command: >
+    semaphore -config {{ semaphore_config_dir }}/config.json setup
+  environment:
+    SEMAPHORE_CONFIG_PATH: "{{ semaphore_config_dir }}/config.json"
+  become_user: "{{ semaphore_user }}"
+  register: semaphore_setup
+  changed_when: true
+  failed_when: false
+
+- name: Display Semaphore setup result
+  ansible.builtin.debug:
+    msg: "Semaphore setup: {{ semaphore_setup.stdout if semaphore_setup.stdout else 'Setup completed' }}"

@@ -1,0 +1,38 @@
+---
+- name: Create backup script
+  ansible.builtin.template:
+    src: semaphore_backup.sh.j2
+    dest: "{{ semaphore_home }}/bin/backup.sh"
+    owner: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    mode: '0755'
+    backup: true
+
+- name: Create backup cron job
+  ansible.builtin.cron:
+    name: "Semaphore database backup"
+    minute: "0"
+    hour: "2"
+    job: "{{ semaphore_home }}/bin/backup.sh"
+    user: "{{ semaphore_user }}"
+    state: present
+
+- name: Create backup log rotation
+  ansible.builtin.template:
+    src: semaphore_backup_logrotate.j2
+    dest: /etc/logrotate.d/semaphore-backup
+    owner: root
+    group: root
+    mode: '0644'
+    backup: true
+
+- name: Test backup script
+  ansible.builtin.command: "{{ semaphore_home }}/bin/backup.sh"
+  become_user: "{{ semaphore_user }}"
+  register: backup_test
+  changed_when: true
+  failed_when: false
+
+- name: Display backup test result
+  ansible.builtin.debug:
+    msg: "Backup test: {{ backup_test.stdout if backup_test.stdout else 'Backup script created successfully' }}"

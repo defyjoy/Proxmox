@@ -1,0 +1,242 @@
+---
+- name: Deploy Semaphore CI/CD on Proxmox VMs
+  hosts: semaphore_servers
+  gather_facts: true
+  become: true
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    # Semaphore Configuration
+    semaphore_version: "2.11.2"
+    semaphore_port: 3000
+    semaphore_interface: "0.0.0.0"
+    
+    # Database Configuration
+    semaphore_db_host: "localhost"
+    semaphore_db_port: 3306
+    semaphore_db_name: "semaphore"
+    semaphore_db_user: "semaphore"
+    semaphore_db_password: "{{ vault_semaphore_db_password | default('semaphore_secure_password_change_me') }}"
+    
+    # MySQL Root Password
+    mysql_root_password: "{{ vault_mysql_root_password | default('mysql_root_secure_password_change_me') }}"
+    
+    # Security Configuration
+    semaphore_access_key_encryption: "{{ vault_semaphore_access_key_encryption | default('change_this_encryption_key_immediately') }}"
+    
+    # Service Configuration
+    semaphore_service_enabled: true
+    semaphore_service_state: "started"
+    
+    # Firewall Configuration
+    semaphore_firewall_enabled: true
+    
+    # Backup Configuration
+    semaphore_backup_enabled: true
+    semaphore_backup_retention_days: 30
+    
+    # LDAP Configuration (disabled by default)
+    semaphore_ldap_enabled: false
+    
+    # Telemetry (disabled by default)
+    semaphore_telemetry_enabled: false
+  
+  pre_tasks:
+    - name: Display deployment information
+      ansible.builtin.debug:
+        msg:
+          - "=== SEMAPHORE DEPLOYMENT ==="
+          - "Host: {{ inventory_hostname }}"
+          - "IP: {{ ansible_default_ipv4.address | default(ansible_host) }}"
+          - "OS: {{ ansible_distribution }} {{ ansible_distribution_version }}"
+          - "Semaphore Version: {{ semaphore_version }}"
+          - "Port: {{ semaphore_port }}"
+          - "Database: {{ semaphore_db_name }}@{{ semaphore_db_host }}:{{ semaphore_db_port }}"
+          - "==============================="
+    
+    - name: Check if Semaphore is already installed
+      ansible.builtin.command: semaphore --version
+      register: semaphore_check
+      changed_when: false
+      failed_when: false
+    
+    - name: Display existing Semaphore installation
+      ansible.builtin.debug:
+        msg: "Existing Semaphore installation found: {{ semaphore_check.stdout if semaphore_check.rc == 0 else 'Not installed' }}"
+      when: semaphore_check.rc == 0
+  
+  tasks:
+    - name: Deploy Semaphore using role
+      ansible.builtin.include_role:
+        name: deploy-semaphore
+  
+  post_tasks:
+    - name: Wait for Semaphore to be fully ready
+      ansible.builtin.wait_for:
+        port: "{{ semaphore_port }}"
+        host: "{{ semaphore_interface }}"
+        delay: 10
+        timeout: 120
+        state: started
+    
+    - name: Verify Semaphore service is running
+      ansible.builtin.systemd:
+        name: semaphore
+      register: semaphore_service_status
+    
+    - name: Test Semaphore web interface
+      ansible.builtin.uri:
+        url: "http://{{ ansible_default_ipv4.address | default(ansible_host) }}:{{ semaphore_port }}"
+        method: GET
+        status_code: 200
+        timeout: 10
+      register: semaphore_web_test
+      failed_when: false
+    
+    - name: Collect deployment information
+      ansible.builtin.set_fact:
+        semaphore_info:
+          hostname: "{{ ansible_hostname }}"
+          ip_address: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+          fqdn: "{{ ansible_fqdn }}"
+          semaphore_version: "{{ semaphore_version }}"
+          web_url: "http://{{ ansible_default_ipv4.address | default(ansible_host) }}:{{ semaphore_port }}"
+          service_status: "{{ semaphore_service_status.status.ActiveState }}"
+          service_enabled: "{{ semaphore_service_status.status.UnitFileState }}"
+          database: "{{ semaphore_db_name }}@{{ semaphore_db_host }}:{{ semaphore_db_port }}"
+          backup_enabled: "{{ semaphore_backup_enabled }}"
+          firewall_enabled: "{{ semaphore_firewall_enabled }}"
+          web_accessible: "{{ 'Yes' if semaphore_web_test.status == 200 else 'No' }}"
+    
+    - name: Display Semaphore deployment summary
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "🎉 SEMAPHORE DEPLOYMENT COMPLETED SUCCESSFULLY! 🎉"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "📊 DEPLOYMENT SUMMARY:"
+          - "  Host: {{ semaphore_info.hostname }}"
+          - "  IP Address: {{ semaphore_info.ip_address }}"
+          - "  FQDN: {{ semaphore_info.fqdn }}"
+          - "  Semaphore Version: {{ semaphore_info.semaphore_version }}"
+          - ""
+          - "🌐 WEB ACCESS:"
+          - "  URL: {{ semaphore_info.web_url }}"
+          - "  Status: {{ semaphore_info.service_status }}"
+          - "  Web Interface: {{ semaphore_info.web_accessible }}"
+          - ""
+          - "🗄️  DATABASE:"
+          - "  Database: {{ semaphore_info.database }}"
+          - "  User: {{ semaphore_db_user }}"
+          - ""
+          - "🔒 SECURITY:"
+          - "  Firewall: {{ semaphore_info.firewall_enabled }}"
+          - "  Backup: {{ semaphore_info.backup_enabled }}"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "📋 NEXT STEPS:"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "1. Access Semaphore Web Interface:"
+          - "   {{ semaphore_info.web_url }}"
+          - ""
+          - "2. Create your first admin user account"
+          - ""
+          - "3. Configure your first project and inventory"
+          - ""
+          - "4. Set up your first playbook"
+          - ""
+          - "5. Start automating with Semaphore! 🚀"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    - name: Save deployment info to file
+      ansible.builtin.copy:
+        content: |
+          Semaphore Deployment Information
+          ================================
+          Host: {{ semaphore_info.hostname }}
+          IP: {{ semaphore_info.ip_address }}
+          URL: {{ semaphore_info.web_url }}
+          Version: {{ semaphore_info.semaphore_version }}
+          Database: {{ semaphore_info.database }}
+          Deployed: {{ ansible_date_time.iso8601 }}
+        dest: "{{ semaphore_home | default('/opt/semaphore') }}/deployment-info.txt"
+        owner: "{{ semaphore_user | default('semaphore') }}"
+        group: "{{ semaphore_group | default('semaphore') }}"
+        mode: '0644'
+      when: semaphore_info is defined
+
+- name: Final Deployment Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Gather all Semaphore deployment facts
+      ansible.builtin.set_fact:
+        all_semaphore_info: "{{ groups['semaphore_servers'] | map('extract', hostvars) | selectattr('semaphore_info', 'defined') | list }}"
+      run_once: true
+    
+    - name: Display complete deployment summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║        🎉 SEMAPHORE DEPLOYMENT COMPLETED SUCCESSFULLY! 🎉       ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "📊 DEPLOYMENT OVERVIEW:"
+          - "  Total Servers: {{ groups['semaphore_servers'] | length }}"
+          - "  Semaphore Version: {{ semaphore_version | default('2.8.93') }}"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "🖥️  SEMAPHORE SERVERS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+    
+    - name: Display individual server information
+      ansible.builtin.debug:
+        msg:
+          - "{{ item.semaphore_info.hostname }}"
+          - "  IP: {{ item.semaphore_info.ip_address }}"
+          - "  URL: {{ item.semaphore_info.web_url }}"
+          - "  Status: {{ item.semaphore_info.service_status }}"
+          - "  Web Access: {{ item.semaphore_info.web_accessible }}"
+      loop: "{{ all_semaphore_info }}"
+      run_once: true
+      when: all_semaphore_info is defined and all_semaphore_info | length > 0
+    
+    - name: Final instructions
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "📋 GETTING STARTED"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "✅ Semaphore is now deployed and ready to use!"
+          - ""
+          - "🌐 Access your Semaphore instance:"
+          - "{% if groups['semaphore_servers'] is defined %}{% for server in groups['semaphore_servers'] %}  http://{{ hostvars[server].ansible_host }}:3000 ({{ server }}){% endfor %}{% endif %}"
+          - ""
+          - "📚 Documentation:"
+          - "  https://docs.ansible-semaphore.com/"
+          - ""
+          - "🔧 Management Commands:"
+          - "  sudo systemctl status semaphore"
+          - "  sudo systemctl restart semaphore"
+          - "  sudo systemctl stop semaphore"
+          - ""
+          - "👤 Create Admin User:"
+          - "  /opt/semaphore/bin/semaphore users add --config /etc/semaphore/config.json --admin --login admin --name 'Admin' --email admin@local --password 'your_password'"
+          - ""
+          - "🗄️  Database Backup:"
+          - "  Daily backups are configured automatically"
+          - "  Backup location: /opt/semaphore-backups/"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true

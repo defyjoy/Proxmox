@@ -1,0 +1,117 @@
+---
+- name: Display setup information
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Display setup information
+      ansible.builtin.debug:
+        msg:
+          - "🚀 SEMAPHORE COMPLETE SETUP"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "This playbook will:"
+          - "  1. Provision all Semaphore VMs in Proxmox"
+          - "  2. Deploy Semaphore CI/CD on the servers"
+          - "  3. Configure databases, services, and networking"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+- import_playbook: provision-semaphore-vms.yml
+
+- name: Wait for VMs to be fully ready
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Wait for VMs to be fully ready
+      ansible.builtin.pause:
+        seconds: 30
+        prompt: |
+          
+          ⏳ Waiting for VMs to fully initialize...
+          
+          This ensures all VMs are ready before deployment.
+          
+          Press ENTER to continue with Semaphore deployment
+
+- import_playbook: deploy-semaphore.yml
+
+- name: Create Semaphore Admin User
+  hosts: semaphore_servers
+  gather_facts: false
+  
+  vars:
+    # Admin user configuration
+    semaphore_admin_username: "admin"
+    semaphore_admin_password: "Joydeep@1985"
+    semaphore_admin_email: "admin@semaphore.local"
+    semaphore_admin_name: "Semaphore Admin"
+  
+  tasks:
+    - name: Set admin password from configuration
+      ansible.builtin.set_fact:
+        admin_password: "{{ semaphore_admin_password }}"
+    
+    - name: Wait for Semaphore to be fully ready
+      ansible.builtin.wait_for:
+        port: 3000
+        host: "{{ ansible_host }}"
+        delay: 5
+        timeout: 60
+    
+    - name: Create admin user on primary server
+      ansible.builtin.shell: |
+        /opt/semaphore/bin/semaphore users add \
+          --config /etc/semaphore/config.json \
+          --admin \
+          --login "{{ semaphore_admin_username }}" \
+          --name "{{ semaphore_admin_name }}" \
+          --email "{{ semaphore_admin_email }}" \
+          --password "{{ admin_password }}"
+      when: inventory_hostname == 'semaphore-01'
+      register: admin_user_result
+      failed_when: admin_user_result.rc != 0 and "Duplicate entry" not in admin_user_result.stderr and "already exists" not in admin_user_result.stderr
+    
+    - name: Display admin credentials
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "🔐 SEMAPHORE ADMIN CREDENTIALS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "Username: {{ semaphore_admin_username }}"
+          - "Password: {{ admin_password }}"
+          - "Email: {{ semaphore_admin_email }}"
+          - "Login URL: http://{{ ansible_host }}:3000"
+          - ""
+          - "⚠️  IMPORTANT: Save this password securely!"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      when: inventory_hostname == 'semaphore-01'
+
+- name: Final setup summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Final setup summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "🎉 SEMAPHORE SETUP COMPLETED SUCCESSFULLY!"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "🌐 ACCESS YOUR SEMAPHORE INSTANCES:"
+          - "  Primary Server:   http://192.168.68.120:3000"
+          - "  Secondary Server: http://192.168.68.121:3000"
+          - ""
+          - "📊 INFRASTRUCTURE OVERVIEW:"
+          - "  • 2 Semaphore Servers (HA Ready)"
+          - "  • 1 MySQL Database Server"
+          - "  • 2 Agent Servers"
+          - "  • 1 Load Balancer"
+          - ""
+          - "🔧 MANAGEMENT COMMANDS:"
+          - "  • Check status:    task semaphore-status"
+          - "  • View logs:       task semaphore-logs"
+          - "  • Test web:        task semaphore-web"
+          - "  • Destroy all:     task semaphore-destroy"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

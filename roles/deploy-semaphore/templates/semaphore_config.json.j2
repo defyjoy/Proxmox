@@ -1,0 +1,40 @@
+{
+  "mysql": {
+    "host": "{{ semaphore_db_host }}:{{ semaphore_db_port }}",
+    "user": "{{ semaphore_db_user }}",
+    "pass": "{{ semaphore_db_password }}",
+    "name": "{{ semaphore_db_name }}"
+  },
+  "dialect": "mysql",
+  "port": "{{ semaphore_port }}",
+  "interface": "{{ semaphore_interface }}",
+  "access_key_encryption": "{{ semaphore_access_key_encryption }}",
+  "tmp_path": "/tmp",
+  "ldap_enable": {{ semaphore_ldap_enabled | lower }},
+  "ldap_binddn": "",
+  "ldap_bindpwd": "",
+  "ldap_server": "",
+  "ldap_searchdn": "",
+  "ldap_searchfilter": "",
+  "ldap_mappings": {
+    "dn": "",
+    "mail": "",
+    "uid": "",
+    "cn": ""
+  },
+  "telemetry": {{ semaphore_telemetry_enabled | lower }},
+  "email_alert": false,
+  "email_sender": "",
+  "email_port": "",
+  "email_host": "",
+  "email_username": "",
+  "email_password": "",
+  "webhook_url": "",
+  "max_parallel_tasks": 10,
+  "max_hosts_per_task": 100,
+  "config_path": "{{ semaphore_config_dir }}",
+  "data_path": "{{ semaphore_data_dir }}",
+  "log_path": "{{ semaphore_log_dir }}",
+  "log_level": "info",
+  "log_format": "text"
+}

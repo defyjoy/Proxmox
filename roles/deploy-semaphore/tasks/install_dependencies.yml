@@ -1,0 +1,62 @@
+---
+- name: Update package cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install system packages
+  ansible.builtin.package:
+    name:
+      - curl
+      - wget
+      - unzip
+      - git
+      - mysql-server
+      - mysql-client
+      - python3-mysqldb
+      - ufw
+    state: present
+
+- name: Start and enable MySQL service
+  ansible.builtin.systemd:
+    name: mysql
+    state: started
+    enabled: true
+
+- name: Wait for MySQL to start
+  ansible.builtin.wait_for:
+    port: 3306
+    host: "{{ semaphore_db_host }}"
+    delay: 5
+    timeout: 60
+
+- name: Set MySQL root password
+  ansible.builtin.mysql_user:
+    name: root
+    password: "{{ mysql_root_password | default('mysql_root_secure_password_change_me') }}"
+    login_host: "{{ semaphore_db_host }}"
+    login_port: "{{ semaphore_db_port }}"
+    login_user: root
+    login_password: "{{ mysql_root_password | default('mysql_root_secure_password_change_me') }}"
+    priv: "*.*:ALL,GRANT"
+    state: present
+
+- name: Create Semaphore database
+  ansible.builtin.mysql_db:
+    name: "{{ semaphore_db_name }}"
+    state: present
+    login_host: "{{ semaphore_db_host }}"
+    login_port: "{{ semaphore_db_port }}"
+    login_user: root
+    login_password: "{{ mysql_root_password | default('mysql_root_secure_password_change_me') }}"
+
+- name: Create Semaphore database user
+  ansible.builtin.mysql_user:
+    name: "{{ semaphore_db_user }}"
+    password: "{{ semaphore_db_password }}"
+    login_host: "{{ semaphore_db_host }}"
+    login_port: "{{ semaphore_db_port }}"
+    login_user: root
+    login_password: "{{ mysql_root_password | default('mysql_root_secure_password_change_me') }}"
+    priv: "{{ semaphore_db_name }}.*:ALL"
+    state: present

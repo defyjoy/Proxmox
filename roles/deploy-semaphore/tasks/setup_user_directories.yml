@@ -1,0 +1,37 @@
+---
+- name: Create Semaphore group
+  ansible.builtin.group:
+    name: "{{ semaphore_group }}"
+    state: present
+
+- name: Create Semaphore user
+  ansible.builtin.user:
+    name: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    home: "{{ semaphore_home }}"
+    shell: /bin/bash
+    system: true
+    create_home: true
+    state: present
+
+- name: Create Semaphore directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    mode: '0755'
+  loop:
+    - "{{ semaphore_home }}"
+    - "{{ semaphore_config_dir }}"
+    - "{{ semaphore_data_dir }}"
+    - "{{ semaphore_log_dir }}"
+    - "{{ semaphore_backup_dir | default('/opt/semaphore-backups') }}"
+
+- name: Create Semaphore binary directory
+  ansible.builtin.file:
+    path: "{{ semaphore_home }}/bin"
+    state: directory
+    owner: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    mode: '0755'

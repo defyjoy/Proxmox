@@ -1,0 +1,125 @@
+---
+- name: Destroy Semaphore VMs in Proxmox
+  hosts: semaphore_infrastructure
+  gather_facts: false
+  become: false
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    # Force deletion without confirmation (set to true to skip prompts)
+    force_destroy: false
+  
+  tasks:
+    - name: Display VM destruction warning
+      ansible.builtin.debug:
+        msg:
+          - "⚠️  WARNING: About to DESTROY Semaphore VM"
+          - "VM Name: {{ inventory_hostname }}"
+          - "VM ID: {{ semaphore_vm_id | default(omit) }}"
+          - "IP: {{ ansible_host }}"
+          - "Description: {{ semaphore_description | default('Semaphore Infrastructure VM') }}"
+      run_once: false
+    
+    - name: Pause for confirmation (unless force_destroy=true)
+      ansible.builtin.pause:
+        prompt: |
+          
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          ⚠️  DESTRUCTIVE OPERATION WARNING ⚠️
+          ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+          
+          You are about to DESTROY Semaphore infrastructure VMs:
+          
+          Servers: {{ groups['semaphore_servers'] | default([]) | join(', ') }}
+          Databases: {{ groups['semaphore_databases'] | default([]) | join(', ') }}
+          Agents: {{ groups['semaphore_agents'] | default([]) | join(', ') }}
+          Load Balancers: {{ groups['semaphore_loadbalancer'] | default([]) | join(', ') }}
+          
+          Total VMs: {{ groups['semaphore_infrastructure'] | length }}
+          
+          This will:
+            • Stop all Semaphore VMs
+            • Delete all VM data
+            • Remove Semaphore infrastructure
+            • Cannot be undone
+          
+          Press ENTER to continue or Ctrl+C to abort
+      run_once: true
+      when: not force_destroy | bool
+    
+    - name: Stop Semaphore VM {{ inventory_hostname }}
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ semaphore_vm_id }}"
+        state: stopped
+        force: true
+      delegate_to: localhost
+      register: vm_stop_result
+      ignore_errors: true
+    
+    - name: Display stop result
+      ansible.builtin.debug:
+        msg: "Semaphore VM {{ inventory_hostname }} (ID {{ semaphore_vm_id }}) {{ 'stopped' if vm_stop_result is succeeded else 'already stopped or not found' }}"
+    
+    - name: Wait for VM to stop
+      ansible.builtin.pause:
+        seconds: 5
+      when: vm_stop_result is succeeded
+    
+    - name: Delete Semaphore VM {{ inventory_hostname }}
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ semaphore_vm_id }}"
+        state: absent
+        force: true
+      delegate_to: localhost
+      register: vm_delete_result
+      ignore_errors: true
+    
+    - name: Display deletion result
+      ansible.builtin.debug:
+        msg: "✅ Semaphore VM {{ inventory_hostname }} (ID {{ semaphore_vm_id }}) {{ 'deleted successfully' if vm_delete_result is succeeded else 'deletion failed or VM not found' }}"
+    
+    - name: Final summary
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "Semaphore VM Destruction Complete"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "VM {{ inventory_hostname }} (ID {{ semaphore_vm_id }}) has been removed"
+          - "Status: {{ 'Success' if vm_delete_result is succeeded else 'Failed or Not Found' }}"
+      run_once: false
+
+- name: Cleanup Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Display final summary
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "SEMAPHORE DESTROY OPERATION COMPLETED"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "All Semaphore VMs have been processed for deletion."
+          - ""
+          - "Check Proxmox to verify VMs are removed."
+          - ""
+          - "To re-provision Semaphore infrastructure:"
+          - "  task semaphore-provision"
+          - ""
+          - "To re-deploy complete Semaphore setup:"
+          - "  task semaphore-all"

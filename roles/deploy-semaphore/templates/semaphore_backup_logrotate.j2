@@ -1,0 +1,11 @@
+# Log rotation for Semaphore backup logs
+{{ semaphore_log_dir }}/backup.log {
+    daily
+    rotate 30
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    su {{ semaphore_user }} {{ semaphore_group }}
+}

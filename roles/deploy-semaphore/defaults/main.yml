@@ -1,0 +1,53 @@
+---
+# Semaphore deployment configuration
+semaphore_version: "2.11.2"
+semaphore_user: semaphore
+semaphore_group: semaphore
+semaphore_home: "/opt/semaphore"
+semaphore_config_dir: "/etc/semaphore"
+semaphore_data_dir: "/var/lib/semaphore"
+semaphore_log_dir: "/var/log/semaphore"
+
+# Database configuration
+semaphore_db_driver: "mysql"  # or "postgres"
+semaphore_db_host: "localhost"
+semaphore_db_port: 3306
+semaphore_db_name: "semaphore"
+semaphore_db_user: "semaphore"
+semaphore_db_password: "semaphore_password"
+
+# MySQL root password for initial setup
+mysql_root_password: "root_password_change_me"
+
+# Admin user configuration
+semaphore_admin_enabled: true
+semaphore_admin_username: "admin"
+semaphore_admin_password: "Joydeep@1985"
+semaphore_admin_email: "admin@semaphore.local"
+semaphore_admin_name: "Semaphore Admin"
+
+# Semaphore application configuration
+semaphore_port: 3000
+semaphore_interface: "0.0.0.0"
+semaphore_access_key_encryption: "default_encryption_key_change_me"
+semaphore_ldap_enabled: false
+semaphore_telemetry_enabled: false
+
+# System service configuration
+semaphore_service_name: "semaphore"
+semaphore_service_enabled: true
+semaphore_service_state: "started"
+
+# SSL/TLS configuration
+semaphore_ssl_enabled: false
+semaphore_ssl_cert_path: ""
+semaphore_ssl_key_path: ""
+
+# Backup configuration
+semaphore_backup_enabled: true
+semaphore_backup_dir: "/opt/semaphore-backups"
+semaphore_backup_retention_days: 30
+
+# Firewall configuration
+semaphore_firewall_enabled: true
+semaphore_firewall_port: "{{ semaphore_port }}"

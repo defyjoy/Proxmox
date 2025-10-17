@@ -1,0 +1,23 @@
+# Semaphore Environment Configuration
+SEMAPHORE_CONFIG_PATH={{ semaphore_config_dir }}/config.json
+SEMAPHORE_DATA_PATH={{ semaphore_data_dir }}
+SEMAPHORE_LOG_PATH={{ semaphore_log_dir }}
+
+# Database Configuration
+SEMAPHORE_MYSQL_HOST={{ semaphore_db_host }}
+SEMAPHORE_MYSQL_PORT={{ semaphore_db_port }}
+SEMAPHORE_MYSQL_USER={{ semaphore_db_user }}
+SEMAPHORE_MYSQL_PASS={{ semaphore_db_password }}
+SEMAPHORE_MYSQL_NAME={{ semaphore_db_name }}
+
+# Application Configuration
+SEMAPHORE_PORT={{ semaphore_port }}
+SEMAPHORE_INTERFACE={{ semaphore_interface }}
+SEMAPHORE_ACCESS_KEY_ENCRYPTION={{ semaphore_access_key_encryption }}
+
+# Security
+SEMAPHORE_LDAP_ENABLE={{ semaphore_ldap_enabled | lower }}
+SEMAPHORE_TELEMETRY={{ semaphore_telemetry_enabled | lower }}
+
+# Paths
+PATH={{ semaphore_home }}/bin:/usr/local/bin:/usr/bin:/bin

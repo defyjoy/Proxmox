@@ -1,0 +1,161 @@
+---
+# Semaphore CI/CD Infrastructure Inventory
+# This inventory is specifically for Semaphore deployments
+
+all:
+  children:
+    # Semaphore CI/CD Servers
+    semaphore_servers:
+      hosts:
+        semaphore-01:
+          ansible_host: 192.168.68.120
+          semaphore_vm_id: 120
+          semaphore_cores: 2
+          semaphore_memory: 1024
+          semaphore_disk: 50
+          semaphore_description: "Primary Semaphore CI/CD Server"
+        
+        semaphore-02:
+          ansible_host: 192.168.68.121
+          semaphore_vm_id: 121
+          semaphore_cores: 2
+          semaphore_memory: 1024
+          semaphore_disk: 50
+          semaphore_description: "Secondary Semaphore CI/CD Server (HA)"
+      
+      vars:
+        # SSH Connection Settings
+        ansible_user: root
+        ansible_ssh_private_key_file: ~/.ssh/proxmox
+        ansible_python_interpreter: /usr/bin/python3
+        
+        # Semaphore Configuration
+        semaphore_version: "2.11.2"
+        semaphore_port: 3000
+        semaphore_interface: "0.0.0.0"
+        
+        # Database Configuration
+        semaphore_db_host: "localhost"
+        semaphore_db_port: 3306
+        semaphore_db_name: "semaphore"
+        semaphore_db_user: "semaphore"
+        
+        # Service Configuration
+        semaphore_service_enabled: true
+        semaphore_service_state: "started"
+        
+        # Security Configuration
+        semaphore_ldap_enabled: false
+        semaphore_telemetry_enabled: false
+        
+        # Firewall Configuration
+        semaphore_firewall_enabled: true
+        
+        # Backup Configuration
+        semaphore_backup_enabled: true
+        semaphore_backup_retention_days: 30
+    
+    # Semaphore Database Servers (if using external database)
+    semaphore_databases:
+      hosts:
+        semaphore-db-01:
+          ansible_host: 192.168.68.130
+          semaphore_vm_id: 130
+          semaphore_cores: 2
+          semaphore_memory: 1024
+          semaphore_disk: 100
+          semaphore_description: "Dedicated MySQL Server for Semaphore"
+      
+      vars:
+        # SSH Connection Settings
+        ansible_user: root
+        ansible_ssh_private_key_file: ~/.ssh/proxmox
+        ansible_python_interpreter: /usr/bin/python3
+        
+        # Database Configuration
+        mysql_root_password: "{{ vault_mysql_root_password }}"
+        mysql_databases:
+          - name: "semaphore"
+            user: "semaphore"
+            password: "{{ vault_semaphore_db_password }}"
+    
+    # Semaphore Agents (for distributed execution)
+    semaphore_agents:
+      hosts:
+        semaphore-agent-01:
+          ansible_host: 192.168.68.140
+          semaphore_vm_id: 140
+          semaphore_cores: 4
+          semaphore_memory: 1024
+          semaphore_disk: 100
+          semaphore_description: "Semaphore Agent for distributed execution"
+        
+        semaphore-agent-02:
+          ansible_host: 192.168.68.141
+          semaphore_vm_id: 141
+          semaphore_cores: 4
+          semaphore_memory: 1024
+          semaphore_disk: 100
+          semaphore_description: "Semaphore Agent for distributed execution"
+      
+      vars:
+        # SSH Connection Settings
+        ansible_user: root
+        ansible_ssh_private_key_file: ~/.ssh/proxmox
+        ansible_python_interpreter: /usr/bin/python3
+        
+        # Agent Configuration
+        semaphore_agent_enabled: true
+        semaphore_agent_port: 3001
+        semaphore_agent_interface: "0.0.0.0"
+    
+    # Semaphore Load Balancer (for HA deployments)
+    semaphore_loadbalancer:
+      hosts:
+        semaphore-lb-01:
+          ansible_host: 192.168.68.150
+          semaphore_vm_id: 150
+          semaphore_cores: 1
+          semaphore_memory: 1024
+          semaphore_disk: 20
+          semaphore_description: "Load Balancer for Semaphore HA"
+      
+      vars:
+        # SSH Connection Settings
+        ansible_user: root
+        ansible_ssh_private_key_file: ~/.ssh/proxmox
+        ansible_python_interpreter: /usr/bin/python3
+        
+        # Load Balancer Configuration
+        semaphore_lb_port: 80
+        semaphore_lb_ssl_port: 443
+        semaphore_backend_servers:
+          - "192.168.68.120:3000"
+          - "192.168.68.121:3000"
+    
+    # All Semaphore infrastructure
+    semaphore_infrastructure:
+      children:
+        semaphore_servers: {}
+        semaphore_databases: {}
+        semaphore_agents: {}
+        semaphore_loadbalancer: {}
+      
+      vars:
+        # Global Semaphore Infrastructure Settings
+        semaphore_network: "192.168.68.0/24"
+        semaphore_gateway: "192.168.68.1"
+        semaphore_dns:
+          - "8.8.8.8"
+          - "8.8.4.4"
+        
+        # Proxmox Configuration
+        proxmox_template_id: 9000
+        proxmox_template_name: "ubuntu-cloud-init"
+        proxmox_storage: "local"
+        proxmox_network_bridge: "vmbr0"
+        
+        # Common VM Settings
+        vm_ciuser: "root"
+        vm_timeout: 600
+        vm_startup_delay: 30

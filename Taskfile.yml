@@ -126,11 +126,7 @@ tasks:
     cmds:
       - echo "Provisioning VMs from Proxmox template..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml
-    sources:
-      - "{{.PLAYBOOKS_DIR}}/provision-vms.yml"
-      - "{{.INVENTORY_FILE}}"
-      - roles/provision-vms/**/*
-      - group_vars/all/vault.yml
+
   
   provision-debug:
     desc: Provision VMs with debug output showing vault variables
@@ -150,6 +146,18 @@ tasks:
       - echo "⚠️  FORCING DESTRUCTION OF ALL VMs - NO CONFIRMATION!"
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/destroy-vms.yml -e "force_destroy=true"
 
+  start-vms:
+    desc: Start all VMs if they are stopped
+    cmds:
+      - echo "Starting VMs if they are stopped..."
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml
+
+  start-vms-check:
+    desc: Dry-run start VMs playbook (check mode)
+    cmds:
+      - echo "Running start VMs playbook in check mode..."
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml --check
+
   provision-check:
     desc: Dry-run provision playbook (check mode)
     cmds:
@@ -161,11 +169,7 @@ tasks:
     cmds:
       - echo "Installing RKE2 cluster..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml
-    sources:
-      - "{{.PLAYBOOKS_DIR}}/rke2-ansible.yaml"
-      - "{{.INVENTORY_FILE}}"
-      - defaults/main.yml
-      - group_vars/all/vault.yml
+
 
   rke2-check:
     desc: Dry-run RKE2 playbook (check mode)
@@ -213,6 +217,7 @@ tasks:
     cmds:
       - echo "Checking playbook syntax..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --syntax-check
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml --syntax-check
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --syntax-check
       - echo "✅ All playbooks passed syntax check!"
 
@@ -221,6 +226,7 @@ tasks:
     cmds:
       - echo "Linting playbooks..."
       - ansible-lint {{.PLAYBOOKS_DIR}}/provision-vms.yml || true
+      - ansible-lint {{.PLAYBOOKS_DIR}}/start-vms.yml || true
       - ansible-lint {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml || true
 
   list-hosts:
@@ -256,43 +262,402 @@ tasks:
       - echo "Note - Ensure PROXMOX_API_TOKEN_ID and PROXMOX_API_TOKEN_SECRET are set"
       - ansible localhost -m community.proxmox.proxmox_node_info -a "api_host=192.168.68.65 api_user=root@pam api_token_id=$PROXMOX_API_TOKEN_ID api_token_secret=$PROXMOX_API_TOKEN_SECRET" || echo "Failed to connect to Proxmox API"
 
+  # Semaphore CI/CD tasks
+  
+  # Combined Setup Commands (Recommended)
+  semaphore-setup:
+    desc: Complete Semaphore setup (provision VMs + deploy Semaphore)
+    cmds:
+      - echo "Setting up complete Semaphore infrastructure..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/semaphore-setup.yml
+
+  semaphore-setup-force:
+    desc: Complete Semaphore setup without prompts
+    cmds:
+      - echo "Setting up complete Semaphore infrastructure (no prompts)..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/semaphore-setup.yml --extra-vars "force_destroy=true"
+
+  # Individual Commands (Advanced Users)
+  semaphore-check-inventory:
+    desc: Verify Semaphore inventory file syntax
+    cmds:
+      - echo "Checking Semaphore inventory file..."
+      - ansible-inventory -i inventory/semaphore.yml --list
+    silent: false
+
+  semaphore-ping:
+    desc: Test connectivity to all Semaphore infrastructure hosts
+    cmds:
+      - echo "Testing connectivity to Semaphore infrastructure..."
+      - ansible all -i inventory/semaphore.yml -m ping
+
+  semaphore-list-hosts:
+    desc: List all Semaphore infrastructure hosts
+    cmds:
+      - echo "=== All Semaphore Infrastructure ==="
+      - ansible all -i inventory/semaphore.yml --list-hosts
+      - echo ""
+      - echo "=== Semaphore Servers ==="
+      - ansible semaphore_servers -i inventory/semaphore.yml --list-hosts
+      - echo ""
+      - echo "=== Database Servers ==="
+      - ansible semaphore_databases -i inventory/semaphore.yml --list-hosts
+      - echo ""
+      - echo "=== Agent Servers ==="
+      - ansible semaphore_agents -i inventory/semaphore.yml --list-hosts
+      - echo ""
+      - echo "=== Load Balancers ==="
+      - ansible semaphore_loadbalancer -i inventory/semaphore.yml --list-hosts
+
+  semaphore-provision:
+    desc: Provision all Semaphore infrastructure VMs
+    cmds:
+      - echo "Provisioning Semaphore infrastructure VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml
+
+  semaphore-provision-servers:
+    desc: Provision only Semaphore server VMs
+    cmds:
+      - echo "Provisioning Semaphore server VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --limit semaphore_servers
+
+  semaphore-provision-databases:
+    desc: Provision only database server VMs
+    cmds:
+      - echo "Provisioning database server VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --limit semaphore_databases
+
+  semaphore-provision-agents:
+    desc: Provision only agent server VMs
+    cmds:
+      - echo "Provisioning agent server VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --limit semaphore_agents
+
+  semaphore-provision-ha:
+    desc: Provision HA infrastructure (servers + load balancer)
+    cmds:
+      - echo "Provisioning HA infrastructure..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --limit "semaphore_servers,semaphore_loadbalancer"
+
+  semaphore-provision-check:
+    desc: Dry-run Semaphore VM provisioning (check mode)
+    cmds:
+      - echo "Running Semaphore provision playbook in check mode..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --check
+
+  semaphore-deploy:
+    desc: Deploy Semaphore CI/CD to all servers
+    cmds:
+      - echo "Deploying Semaphore CI/CD..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml
+
+  semaphore-deploy-servers:
+    desc: Deploy Semaphore to server hosts only
+    cmds:
+      - echo "Deploying Semaphore to servers..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --limit semaphore_servers
+
+  semaphore-deploy-primary:
+    desc: Deploy Semaphore to primary server only
+    cmds:
+      - echo "Deploying Semaphore to primary server..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --limit semaphore-01
+
+  semaphore-deploy-check:
+    desc: Dry-run Semaphore deployment (check mode)
+    cmds:
+      - echo "Running Semaphore deployment in check mode..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --check
+
+  semaphore-status:
+    desc: Check Semaphore service status on all servers
+    cmds:
+      - echo "Checking Semaphore service status..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m systemd -a "name=semaphore"
+
+  semaphore-restart:
+    desc: Restart Semaphore service on all servers
+    cmds:
+      - echo "Restarting Semaphore service..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m systemd -a "name=semaphore state=restarted"
+
+  semaphore-stop:
+    desc: Stop Semaphore service on all servers
+    cmds:
+      - echo "Stopping Semaphore service..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m systemd -a "name=semaphore state=stopped"
+
+  semaphore-start:
+    desc: Start Semaphore service on all servers
+    cmds:
+      - echo "Starting Semaphore service..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m systemd -a "name=semaphore state=started"
+
+  semaphore-logs:
+    desc: View Semaphore service logs
+    cmds:
+      - echo "Viewing Semaphore service logs..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m shell -a "journalctl -u semaphore -n 50"
+
+  semaphore-logs-follow:
+    desc: Follow Semaphore service logs in real-time
+    cmds:
+      - echo "Following Semaphore service logs (press Ctrl+C to stop)..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m shell -a "journalctl -u semaphore -f"
+
+  semaphore-backup:
+    desc: Run manual backup on all Semaphore servers
+    cmds:
+      - echo "Running manual backup..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m shell -a "/opt/semaphore/bin/backup.sh"
+
+  semaphore-backup-status:
+    desc: Check backup status and list available backups
+    cmds:
+      - echo "Checking backup status..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m shell -a "ls -la /opt/semaphore-backups/"
+
+  semaphore-web-test:
+    desc: Test Semaphore web interface accessibility
+    cmds:
+      - echo "Testing Semaphore web interface..."
+      - ansible semaphore_servers -i inventory/semaphore.yml -m uri -a "url=http://localhost:3000 timeout=10"
+
+  semaphore-facts:
+    desc: Gather and display facts from Semaphore infrastructure
+    cmds:
+      - echo "Gathering Semaphore infrastructure facts..."
+      - ansible all -i inventory/semaphore.yml -m setup
+
+  semaphore-all:
+    desc: Execute full Semaphore deployment (provision + deploy)
+    cmds:
+      - task: semaphore-provision
+      - echo "Waiting 30 seconds for VMs to fully initialize..."
+      - sleep 30
+      - task: semaphore-ping
+      - task: semaphore-deploy
+
+  semaphore-all-check:
+    desc: Dry-run full Semaphore deployment
+    cmds:
+      - task: semaphore-provision-check
+      - task: semaphore-deploy-check
+
+  semaphore-cluster:
+    desc: Full Semaphore cluster deployment with dependencies
+    cmds:
+      - task: install
+      - task: semaphore-provision
+      - echo "Waiting 30 seconds for VMs to fully initialize..."
+      - sleep 30
+      - task: semaphore-ping
+      - task: semaphore-deploy
+
+  semaphore-single:
+    desc: Deploy single Semaphore server (primary only)
+    cmds:
+      - echo "Deploying single Semaphore server..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --limit semaphore-01
+      - echo "Waiting 30 seconds for VM to fully initialize..."
+      - sleep 30
+      - ansible semaphore-01 -i inventory/semaphore.yml -m ping
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --limit semaphore-01
+
+  semaphore-ha:
+    desc: Deploy high-availability Semaphore setup
+    cmds:
+      - echo "Deploying HA Semaphore infrastructure..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --limit "semaphore_servers,semaphore_loadbalancer"
+      - echo "Waiting 30 seconds for VMs to fully initialize..."
+      - sleep 30
+      - task: semaphore-ping
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --limit semaphore_servers
+      - echo "HA Semaphore deployment complete!"
+
+  semaphore-syntax:
+    desc: Check syntax of Semaphore playbooks
+    cmds:
+      - echo "Checking Semaphore playbook syntax..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/provision-semaphore-vms.yml --syntax-check
+      - ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --syntax-check
+      - echo "✅ All Semaphore playbooks passed syntax check!"
+
+  semaphore-lint:
+    desc: Lint Semaphore playbooks with ansible-lint
+    cmds:
+      - echo "Linting Semaphore playbooks..."
+      - ansible-lint playbooks/provision-semaphore-vms.yml || true
+      - ansible-lint playbooks/deploy-semaphore.yml || true
+
+  semaphore-clean:
+    desc: Clean up Semaphore temporary files and caches
+    cmds:
+      - echo "Cleaning up Semaphore files..."
+      - find . -type f -name "*.retry" -delete
+      - find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+      - echo "Semaphore cleanup complete!"
+
+  semaphore-create-admin:
+    desc: Create admin user for Semaphore using configured password
+    cmds:
+      - echo "Creating Semaphore admin user with configured password..."
+      - |
+        echo "Attempting to create admin user..."
+        if ansible semaphore-01 -i inventory/semaphore.yml -m shell -a "sudo -u semaphore /opt/semaphore/bin/semaphore users add --config /etc/semaphore/config.json --admin --login admin --name 'Semaphore Admin' --email admin@semaphore.local --password 'Joydeep@1985'" 2>&1 | grep -q "Duplicate entry"; then
+          echo "✅ Admin user 'admin' already exists - skipping creation"
+          echo "🔐 EXISTING ADMIN CREDENTIALS:"
+          echo "  Username: admin"
+          echo "  Password: (use existing password or reset via web interface)"
+          echo "  Login URL: http://192.168.68.120:3000"
+        else
+          echo ""
+          echo "🔐 NEW ADMIN CREDENTIALS:"
+          echo "  Username: admin"
+          echo "  Password: Joydeep@1985"
+          echo "  Login URL: http://192.168.68.120:3000"
+        fi
+        echo ""
+        echo "⚠️  IMPORTANT: Save this password securely!"
+        echo "💡 To change the default password, update 'semaphore_admin_password' in roles/deploy-semaphore/defaults/main.yml"
+
+  semaphore-show-admin-password:
+    desc: Show Semaphore admin user information and password reset instructions
+    cmds:
+      - |
+        echo "🔐 SEMAPHORE ADMIN USER INFORMATION"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "📋 Current Admin Users:"
+        ansible semaphore-01 -i inventory/semaphore.yml -m shell -a "sudo -u semaphore /opt/semaphore/bin/semaphore users list --config /etc/semaphore/config.json" || echo "Unable to list users"
+        echo ""
+        echo "🌐 Access URLs:"
+        echo "  Primary Server:   http://192.168.68.120:3000"
+        echo "  Secondary Server: http://192.168.68.121:3000"
+        echo ""
+        echo "🔑 Password Reset Options:"
+        echo "  1. Use the web interface login page 'Forgot Password' feature"
+        echo "  2. Create a new admin user: task semaphore-create-admin"
+        echo "  3. Reset via command line (if you have existing access)"
+        echo ""
+        echo "📚 Additional Information:"
+        echo "  • Default admin username: admin"
+        echo "  • Default admin password: Joydeep@1985"
+        echo "  • Web interface accessible on port 3000"
+        echo "  • Service status: active"
+        echo ""
+        echo "💡 To change the default password:"
+        echo "  Update 'semaphore_admin_password' in roles/deploy-semaphore/defaults/main.yml"
+        echo "  Then run: task semaphore-deploy"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+  # Semaphore VM Destruction tasks
+  semaphore-destroy:
+    desc: Destroy all Semaphore infrastructure VMs (with confirmation)
+    cmds:
+      - echo "Destroying Semaphore infrastructure VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml
+
+  semaphore-destroy-force:
+    desc: Destroy all Semaphore infrastructure VMs (no confirmation)
+    cmds:
+      - echo "Force destroying Semaphore infrastructure VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml -e "force_destroy=true"
+
+  semaphore-destroy-servers:
+    desc: Destroy only Semaphore server VMs
+    cmds:
+      - echo "Destroying Semaphore server VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml --limit semaphore_servers
+
+  semaphore-destroy-databases:
+    desc: Destroy only Semaphore database VMs
+    cmds:
+      - echo "Destroying Semaphore database VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml --limit semaphore_databases
+
+  semaphore-destroy-agents:
+    desc: Destroy only Semaphore agent VMs
+    cmds:
+      - echo "Destroying Semaphore agent VMs..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml --limit semaphore_agents
+
+  semaphore-destroy-ha:
+    desc: Destroy HA infrastructure (servers + load balancer)
+    cmds:
+      - echo "Destroying HA infrastructure..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml --limit "semaphore_servers,semaphore_loadbalancer"
+
+  semaphore-destroy-check:
+    desc: Dry-run Semaphore VM destruction (check mode)
+    cmds:
+      - echo "Running Semaphore destroy playbook in check mode..."
+      - ansible-playbook -i inventory/semaphore.yml playbooks/destroy-semaphore-vms.yml --check
+
   # Help and documentation
   help:
     desc: Show detailed help information
     cmds:
       - |
         cat << EOF
-        RKE2 Proxmox Provisioner - Taskfile Commands
-        ============================================
+        Proxmox Infrastructure Provisioner - Taskfile Commands
+        ======================================================
         
-        Quick Start:
-          task install        # Install dependencies
-          task cluster        # Full deployment (provision + RKE2)
+        🚀 QUICK START:
+          task install          # Install dependencies
+          task cluster          # Full RKE2 deployment (provision + RKE2)
+          task semaphore-cluster # Full Semaphore deployment
         
-        Individual Playbooks:
-          task provision      # Provision VMs from template
-          task destroy        # Destroy all VMs (with confirmation)
-          task rke2           # Install RKE2 cluster
-          task rke2-remove    # Remove RKE2 (keeps VMs)
-          task all            # Run both playbooks
+        📦 RKE2 KUBERNETES CLUSTER:
+          task provision        # Provision VMs from template
+          task rke2            # Install RKE2 cluster
+          task rke2-remove     # Remove RKE2 (keeps VMs)
+          task all             # Run both playbooks (provision + RKE2)
         
-        Testing & Validation:
-          task ping           # Test SSH connectivity
-          task syntax         # Check playbook syntax
-          task provision-check # Dry-run provision
-          task rke2-check     # Dry-run RKE2
+        🔧 SEMAPHORE CI/CD (RECOMMENDED):
+          task semaphore-setup      # Complete setup (provision + deploy)
+          task semaphore-setup-force # Complete setup without prompts
         
-        RKE2 Management:
-          task rke2           # Deploy RKE2 cluster
-          task rke2-check     # Dry-run RKE2 deployment
-          task rke2-remove    # Remove RKE2 from all nodes
-          task rke2-remove-force # Remove without confirmation
+        🔧 SEMAPHORE CI/CD (INDIVIDUAL):
+          task semaphore-single     # Deploy single Semaphore server
+          task semaphore-ha         # Deploy HA Semaphore setup
+          task semaphore-cluster    # Full Semaphore deployment
+          task semaphore-provision  # Provision Semaphore VMs only
+          task semaphore-deploy     # Deploy Semaphore only
+          task semaphore-create-admin # Create admin user
+          task semaphore-show-admin-password # Show admin user info & reset options
         
-        Inventory:
-          task list-hosts     # List all inventory hosts
-          task check-inventory # Verify inventory syntax
+        🏗️  SEMAPHORE INFRASTRUCTURE:
+          task semaphore-provision-servers    # Provision server VMs only
+          task semaphore-provision-databases  # Provision database VMs only
+          task semaphore-provision-agents     # Provision agent VMs only
+          task semaphore-provision-ha         # Provision HA infrastructure
         
-        Vault Management:
+        🔍 SEMAPHORE MANAGEMENT:
+          task semaphore-status      # Check service status
+          task semaphore-restart     # Restart services
+          task semaphore-logs        # View service logs
+          task semaphore-backup      # Run manual backup
+          task semaphore-web-test    # Test web interface
+        
+        🧪 TESTING & VALIDATION:
+          task ping                  # Test SSH connectivity
+          task semaphore-ping        # Test Semaphore infrastructure connectivity
+          task syntax                # Check RKE2 playbook syntax
+          task semaphore-syntax      # Check Semaphore playbook syntax
+          task provision-check       # Dry-run provision
+          task semaphore-provision-check # Dry-run Semaphore provision
+          task rke2-check           # Dry-run RKE2
+          task semaphore-deploy-check # Dry-run Semaphore deployment
+        
+        📋 INVENTORY MANAGEMENT:
+          task list-hosts           # List RKE2 inventory hosts
+          task semaphore-list-hosts # List Semaphore infrastructure hosts
+          task check-inventory      # Verify RKE2 inventory syntax
+          task semaphore-check-inventory # Verify Semaphore inventory syntax
+        
+        🔐 VAULT MANAGEMENT:
           task vault-create          # Create encrypted vault file
           task vault-edit            # Edit encrypted vault
           task vault-view            # View vault contents
@@ -300,14 +665,43 @@ tasks:
           task vault-password-file   # Save password (no more prompts)
           task vault-password-remove # Remove password file
         
-        Authentication Setup:
+        🧹 CLEANUP:
+          task clean                 # Clean RKE2 temporary files
+          task semaphore-clean       # Clean Semaphore temporary files
+        
+        💥 DESTROY VMs:
+          task destroy               # Destroy RKE2 cluster VMs
+          task destroy-force         # Force destroy RKE2 VMs (no prompt)
+          task semaphore-destroy     # Destroy Semaphore infrastructure VMs
+          task semaphore-destroy-force # Force destroy Semaphore VMs (no prompt)
+        
+        📚 EXAMPLES:
+        
+        RKE2 Kubernetes Cluster:
+          task vault-create          # Setup vault with credentials
+          task cluster               # Deploy full RKE2 cluster
+        
+        Complete Semaphore Setup:
+          task vault-create          # Setup vault with credentials
+          task semaphore-setup       # Complete Semaphore setup
+        
+        Single Semaphore Server:
+          task vault-create          # Setup vault with credentials
+          task semaphore-single      # Deploy single Semaphore server
+        
+        HA Semaphore Setup:
+          task vault-create          # Setup vault with credentials
+          task semaphore-ha          # Deploy HA Semaphore infrastructure
+        
+        Full Infrastructure:
+          task vault-create          # Setup vault with credentials
+          task cluster               # Deploy RKE2 cluster
+          task semaphore-cluster     # Deploy Semaphore infrastructure
+        
+        🔧 AUTHENTICATION SETUP:
           1. Create Proxmox API Token in Datacenter -> Permissions -> API Tokens
           2. Store credentials in encrypted vault: task vault-create
-          3. Configure SSH key in inventory/hosts.yml
-        
-        Example:
-          task vault-create   # Setup vault with credentials
-          task cluster        # Deploy cluster (will ask for vault password)
+          3. Configure SSH key in inventory files
         
         For more info: task --list
         EOF

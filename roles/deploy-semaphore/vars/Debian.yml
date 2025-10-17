@@ -1,0 +1,33 @@
+---
+# Debian/Ubuntu specific variables for Semaphore deployment
+
+# Package manager
+semaphore_package_manager: "apt"
+
+# System packages for Debian/Ubuntu
+semaphore_system_packages:
+  - curl
+  - wget
+  - unzip
+  - git
+  - mysql-server
+  - mysql-client
+  - python3-mysqldb
+  - ufw
+
+# Service management
+semaphore_service_manager: "systemd"
+
+# File paths (Debian/Ubuntu specific)
+semaphore_binary_path: "/opt/semaphore/bin/semaphore"
+semaphore_config_path: "/etc/semaphore/config.json"
+semaphore_service_path: "/etc/systemd/system/semaphore.service"
+
+# User and group
+semaphore_user: "semaphore"
+semaphore_group: "semaphore"
+
+# Directory permissions
+semaphore_directory_mode: "0755"
+semaphore_config_mode: "0644"
+semaphore_binary_mode: "0755"

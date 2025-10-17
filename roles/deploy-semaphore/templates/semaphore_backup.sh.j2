@@ -1,0 +1,58 @@
+#!/bin/bash
+#
+# Semaphore Database Backup Script
+# This script creates a backup of the Semaphore database
+#
+
+set -euo pipefail
+
+# Configuration
+BACKUP_DIR="{{ semaphore_backup_dir }}"
+DB_HOST="{{ semaphore_db_host }}"
+DB_PORT="{{ semaphore_db_port }}"
+DB_NAME="{{ semaphore_db_name }}"
+DB_USER="{{ semaphore_db_user }}"
+DB_PASS="{{ semaphore_db_password }}"
+RETENTION_DAYS="{{ semaphore_backup_retention_days }}"
+LOG_FILE="{{ semaphore_log_dir }}/backup.log"
+
+# Create backup directory if it doesn't exist
+mkdir -p "$BACKUP_DIR"
+
+# Generate backup filename with timestamp
+BACKUP_FILE="$BACKUP_DIR/semaphore_backup_$(date +%Y%m%d_%H%M%S).sql"
+
+# Log function
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+log "Starting Semaphore database backup..."
+
+# Create database backup
+if mysqldump -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASS" \
+    --single-transaction \
+    --routines \
+    --triggers \
+    --events \
+    --hex-blob \
+    --opt \
+    "$DB_NAME" > "$BACKUP_FILE"; then
+    
+    # Compress the backup
+    gzip "$BACKUP_FILE"
+    BACKUP_FILE="${BACKUP_FILE}.gz"
+    
+    log "Backup completed successfully: $BACKUP_FILE"
+    log "Backup size: $(du -h "$BACKUP_FILE" | cut -f1)"
+    
+    # Clean up old backups
+    find "$BACKUP_DIR" -name "semaphore_backup_*.sql.gz" -type f -mtime +$RETENTION_DAYS -delete
+    log "Cleaned up backups older than $RETENTION_DAYS days"
+    
+else
+    log "ERROR: Database backup failed!"
+    exit 1
+fi
+
+log "Backup process completed successfully"

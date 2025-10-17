@@ -1,0 +1,30 @@
+---
+- name: Enable UFW firewall
+  ansible.builtin.ufw:
+    state: enabled
+    policy: deny
+  when: semaphore_firewall_enabled | default(true)
+
+- name: Allow SSH access
+  ansible.builtin.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+  when: semaphore_firewall_enabled | default(true)
+
+- name: Allow Semaphore web interface
+  ansible.builtin.ufw:
+    rule: allow
+    port: "{{ semaphore_port }}"
+    proto: tcp
+  when: semaphore_firewall_enabled | default(true)
+
+- name: Display firewall status
+  ansible.builtin.command: ufw status verbose
+  register: firewall_status
+  changed_when: false
+  when: semaphore_firewall_enabled | default(true)
+
+- name: Show firewall rules
+  ansible.builtin.debug:
+    msg: "{{ firewall_status.stdout_lines if firewall_status is defined else 'Firewall configuration skipped' }}"

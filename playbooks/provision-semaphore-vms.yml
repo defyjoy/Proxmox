@@ -1,0 +1,282 @@
+---
+- name: Provision Semaphore VMs in Proxmox
+  hosts: semaphore_infrastructure
+  gather_facts: false
+  become: false  # Proxmox API calls don't need privilege escalation
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    # Proxmox API connection settings (loaded from group_vars/all/vars.yml)
+    # Sensitive credentials are in encrypted group_vars/all/vault.yml
+    proxmox_template_id: 9000
+    proxmox_template_name: "ubuntu-cloud-init"
+    
+    # VM specifications (can be overridden per host)
+    vm_cores: 2
+    vm_memory: 4096
+    vm_disk_size: 50
+    vm_storage: local
+    vm_network_bridge: vmbr0
+    vm_gateway: 192.168.68.1
+    
+    # Cloud-init settings
+    vm_ciuser: root
+    vm_nameserver: 8.8.8.8
+    
+    # VM ID mapping for different server types
+    semaphore_vm_id_start: 120
+    semaphore_db_vm_id_start: 130
+    semaphore_agent_vm_id_start: 140
+    semaphore_lb_vm_id_start: 150
+  
+  tasks:
+    - name: Debug - Show all Proxmox vault variables
+      ansible.builtin.debug:
+        msg:
+          - "=== Vault Variables ==="
+          - "vault_proxmox_api_token_id: {{ vault_proxmox_api_token_id | default('NOT_SET') }}"
+          - "vault_proxmox_api_token_secret: {{ vault_proxmox_api_token_secret | default('NOT_SET') | regex_replace('^(.{8}).*(.{4})$', '\\1****\\2') }}"
+          - "=== Group Variables ==="
+          - "proxmox_host: {{ proxmox_host }}"
+          - "proxmox_api_user: {{ proxmox_api_user }}"
+          - "proxmox_node: {{ proxmox_node }}"
+          - "=== VM Configuration ==="
+          - "VM Name: {{ inventory_hostname }}"
+          - "VM ID: {{ semaphore_vm_id }}"
+          - "VM IP: {{ ansible_host }}"
+          - "VM Cores: {{ semaphore_cores | default(vm_cores) }}"
+          - "VM Memory: {{ semaphore_memory | default(vm_memory) }}"
+          - "VM Disk: {{ semaphore_disk | default(vm_disk_size) }}"
+      run_once: true
+      tags: [debug, never]
+    
+    - name: Set VM configuration from host variables
+      ansible.builtin.set_fact:
+        vm_id: "{{ semaphore_vm_id }}"
+        vm_name: "{{ inventory_hostname }}"
+        vm_cores: "{{ semaphore_cores | default(vm_cores) }}"
+        vm_memory: "{{ semaphore_memory | default(vm_memory) }}"
+        vm_disk_size: "{{ semaphore_disk | default(vm_disk_size) }}"
+    
+    - name: Display VM provisioning information
+      ansible.builtin.debug:
+        msg: "Provisioning {{ semaphore_description | default('Semaphore VM') }} '{{ vm_name }}' with ID {{ vm_id }} at IP {{ ansible_host }}"
+    
+    - name: Provision VM from template
+      ansible.builtin.include_role:
+        name: provision-vms
+
+- name: Post-provisioning tasks
+  hosts: semaphore_infrastructure
+  gather_facts: false
+  become: false
+  
+  tasks:
+    - name: Wait for cloud-init to complete
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        delay: 30
+        timeout: 600
+        state: started
+        search_regex: OpenSSH
+      delegate_to: localhost
+      connection: local
+    
+    - name: Wait for SSH to be fully ready
+      ansible.builtin.wait_for_connection:
+        connect_timeout: 20
+        sleep: 5
+        delay: 10
+        timeout: 300
+    
+    - name: Wait for cloud-init to finish initialization
+      ansible.builtin.command: cloud-init status --wait
+      register: cloud_init_status
+      changed_when: false
+      failed_when: false
+      async: 300
+      poll: 10
+    
+    - name: Display cloud-init status
+      ansible.builtin.debug:
+        msg: "Cloud-init status: {{ cloud_init_status.stdout if cloud_init_status is succeeded else 'Skipped or not available' }}"
+    
+    - name: Gather facts after provisioning
+      ansible.builtin.setup:
+    
+    - name: Collect VM information
+      ansible.builtin.set_fact:
+        vm_info:
+          name: "{{ inventory_hostname }}"
+          vm_id: "{{ vm_id | default('N/A') }}"
+          ip_address: "{{ ansible_default_ipv4.address | default(ansible_host) }}"
+          hostname: "{{ ansible_hostname }}"
+          fqdn: "{{ ansible_fqdn }}"
+          os: "{{ ansible_distribution }} {{ ansible_distribution_version }}"
+          kernel: "{{ ansible_kernel }}"
+          architecture: "{{ ansible_architecture }}"
+          cpu_cores: "{{ ansible_processor_vcpus }}"
+          memory_mb: "{{ ansible_memtotal_mb }}"
+          uptime_minutes: "{{ ansible_uptime_seconds | default(0) | int // 60 }}"
+          ssh_status: "✅ Ready"
+          group: "{{ groups.keys() | select('match', '^semaphore_.*') | list | first | default('semaphore_infrastructure') }}"
+          description: "{{ semaphore_description | default('Semaphore Infrastructure') }}"
+    
+    - name: Display individual VM information
+      ansible.builtin.debug:
+        msg:
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "✅ {{ vm_info.name }} ({{ vm_info.group | upper }})"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "Description: {{ vm_info.description }}"
+          - "VM ID: {{ vm_info.vm_id }}"
+          - "IP: {{ vm_info.ip_address }}"
+          - "FQDN: {{ vm_info.fqdn }}"
+          - "OS: {{ vm_info.os }}"
+          - "Kernel: {{ vm_info.kernel }}"
+          - "CPU: {{ vm_info.cpu_cores }} cores"
+          - "RAM: {{ vm_info.memory_mb }} MB"
+          - "Uptime: {{ vm_info.uptime_minutes }} minutes"
+          - "SSH: {{ vm_info.ssh_status }}"
+
+- name: Post-provisioning Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Gather all VM facts
+      ansible.builtin.set_fact:
+        all_vms_info: "{{ groups['semaphore_infrastructure'] | map('extract', hostvars) | list }}"
+      run_once: true
+    
+    - name: Display complete cluster summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "╔════════════════════════════════════════════════════════════════╗"
+          - "║        🎉 SEMAPHORE INFRASTRUCTURE PROVISIONED! 🎉            ║"
+          - "╚════════════════════════════════════════════════════════════════╝"
+          - ""
+          - "📊 INFRASTRUCTURE SUMMARY:"
+          - "  Total VMs: {{ groups['semaphore_infrastructure'] | length }}"
+          - "  Semaphore Servers: {{ groups['semaphore_servers'] | length }}"
+          - "  Database Servers: {{ groups['semaphore_databases'] | length }}"
+          - "  Agent Servers: {{ groups['semaphore_agents'] | length }}"
+          - "  Load Balancers: {{ groups['semaphore_loadbalancer'] | length }}"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "🖥️  SEMAPHORE SERVERS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+    
+    - name: Display semaphore servers info
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  Description: {{ hostvars[item].semaphore_description | default('Semaphore Server') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+      loop: "{{ groups['semaphore_servers'] }}"
+      run_once: true
+      when: groups['semaphore_servers'] is defined
+    
+    - name: Database servers header
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "🗄️  DATABASE SERVERS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+      when: groups['semaphore_databases'] is defined
+    
+    - name: Display database servers info
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  Description: {{ hostvars[item].semaphore_description | default('Database Server') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+      loop: "{{ groups['semaphore_databases'] }}"
+      run_once: true
+      when: groups['semaphore_databases'] is defined
+    
+    - name: Agent servers header
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "⚙️  AGENT SERVERS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+      when: groups['semaphore_agents'] is defined
+    
+    - name: Display agent servers info
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  Description: {{ hostvars[item].semaphore_description | default('Agent Server') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+      loop: "{{ groups['semaphore_agents'] }}"
+      run_once: true
+      when: groups['semaphore_agents'] is defined
+    
+    - name: Load balancer header
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "⚖️  LOAD BALANCERS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true
+      when: groups['semaphore_loadbalancer'] is defined
+    
+    - name: Display load balancer info
+      ansible.builtin.debug:
+        msg:
+          - "{{ item }}"
+          - "  IP: {{ hostvars[item].ansible_default_ipv4.address | default(hostvars[item].ansible_host) }}"
+          - "  VM ID: {{ hostvars[item].vm_id | default('N/A') }}"
+          - "  Description: {{ hostvars[item].semaphore_description | default('Load Balancer') }}"
+          - "  OS: {{ hostvars[item].ansible_distribution }} {{ hostvars[item].ansible_distribution_version }}"
+          - "  CPU: {{ hostvars[item].ansible_processor_vcpus }} cores | RAM: {{ hostvars[item].ansible_memtotal_mb }} MB"
+      loop: "{{ groups['semaphore_loadbalancer'] }}"
+      run_once: true
+      when: groups['semaphore_loadbalancer'] is defined
+    
+    - name: Final summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - "📋 NEXT STEPS"
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+          - ""
+          - "✅ All Semaphore infrastructure VMs are provisioned and ready!"
+          - ""
+          - "Deploy Semaphore CI/CD:"
+          - "  ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml"
+          - ""
+          - "Deploy specific components:"
+          - "  ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --limit semaphore_servers"
+          - "  ansible-playbook -i inventory/semaphore.yml playbooks/deploy-semaphore.yml --limit semaphore_databases"
+          - ""
+          - "Verify connectivity:"
+          - "  ansible -i inventory/semaphore.yml semaphore_infrastructure -m ping"
+          - ""
+          - "Access VMs via SSH:"
+          - "{% if groups['semaphore_servers'] is defined %}{% for server in groups['semaphore_servers'] %}  ssh -i ~/.ssh/proxmox root@{{ hostvars[server].ansible_host }}  # {{ server }}{% endfor %}{% endif %}"
+          - ""
+          - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+      run_once: true

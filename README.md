@@ -136,6 +136,89 @@ task check-inventory       # Verify inventory file
 task list-hosts            # List all hosts in inventory
 ```
 
+## 🚀 Semaphore CI/CD Infrastructure
+
+This project now includes comprehensive Semaphore CI/CD infrastructure deployment alongside the RKE2 Kubernetes cluster.
+
+### 🎯 Semaphore Quick Start
+
+**Complete Semaphore Setup (Recommended):**
+```bash
+# Setup vault with credentials
+task vault-create
+
+# Complete Semaphore infrastructure setup
+task semaphore-setup
+```
+
+**Access your Semaphore instances:**
+- Primary Server: http://192.168.68.120:3000
+- Secondary Server: http://192.168.68.121:3000
+
+### 🔧 Semaphore Commands
+
+```bash
+# 🚀 Complete Setup (Recommended)
+task semaphore-setup       # Complete setup (provision + deploy)
+task semaphore-setup-force # Complete setup without prompts
+
+# 🖥️ Individual Operations
+task semaphore-provision   # Provision Semaphore VMs only
+task semaphore-deploy      # Deploy Semaphore on existing VMs
+
+# 🏗️ Infrastructure Management
+task semaphore-status      # Check all services status
+task semaphore-logs        # View Semaphore service logs
+task semaphore-web         # Test web interface accessibility
+task semaphore-ping        # Test connectivity to all VMs
+
+# 💥 Destruction
+task semaphore-destroy     # Destroy all Semaphore VMs (with confirmation)
+task semaphore-destroy-force # Force destroy (no confirmation)
+
+# 🧹 Maintenance
+task semaphore-clean       # Clean temporary files
+```
+
+### 📊 Semaphore Infrastructure
+
+**6 VMs Deployed:**
+- **2 Semaphore Servers** (HA Ready)
+  - semaphore-01: 192.168.68.120:3000
+  - semaphore-02: 192.168.68.121:3000
+- **1 MySQL Database Server**: semaphore-db-01 (192.168.68.130)
+- **2 Agent Servers**: semaphore-agent-01/02 (192.168.68.140-141)
+- **1 Load Balancer**: semaphore-lb-01 (192.168.68.150)
+
+### 🌐 Semaphore Features
+
+- **High Availability**: Multiple server instances
+- **Database**: Dedicated MySQL server with automated backups
+- **Distributed Agents**: Multiple agent nodes for parallel execution
+- **Load Balancing**: HAProxy load balancer for traffic distribution
+- **Automated Backups**: Daily database backups with retention
+- **Firewall Security**: UFW configured with minimal required ports
+- **Service Management**: Systemd services with auto-restart
+
+### 📁 Semaphore Project Structure
+
+```
+├── inventory/semaphore.yml              # Semaphore-specific inventory
+├── playbooks/
+│   ├── semaphore-setup.yml             # Complete setup (NEW)
+│   ├── provision-semaphore-vms.yml     # VM provisioning
+│   ├── deploy-semaphore.yml            # Semaphore deployment
+│   └── destroy-semaphore-vms.yml       # VM destruction
+├── roles/deploy-semaphore/             # Complete Semaphore role
+│   ├── tasks/                          # Installation & configuration
+│   ├── templates/                      # Config templates
+│   └── defaults/main.yml               # Semaphore variables
+└── docs/
+    ├── SEMAPHORE-INFRASTRUCTURE.md     # Detailed documentation
+    ├── TASKFILE-SEMAPHORE-QUICKREF.md  # Command reference
+    └── inventory/README.md             # Inventory guide
+```
+
 ## 📁 Project Structure
 
 ```
@@ -143,25 +226,34 @@ task list-hosts            # List all hosts in inventory
 ├── ansible.cfg                       # Ansible configuration
 ├── requirements.yml                  # Role & collection dependencies
 ├── defaults/main.yml                 # RKE2 configuration (350+ variables)
-├── inventory/hosts.yml               # 6 VMs defined
+├── inventory/
+│   ├── hosts.yml                    # RKE2 cluster VMs (6 VMs)
+│   └── semaphore.yml                # Semaphore infrastructure VMs (6 VMs)
 ├── group_vars/all/
 │   ├── vars.yml                     # Proxmox & SSH settings
 │   └── vault.yml                    # Encrypted API tokens
 ├── playbooks/
-│   ├── provision-vms.yml            # Create VMs
-│   ├── destroy-vms.yml              # Delete VMs
+│   ├── provision-vms.yml            # Create RKE2 VMs
+│   ├── destroy-vms.yml              # Delete RKE2 VMs
 │   ├── rke2-ansible.yaml            # Deploy Kubernetes
-│   └── verify-proxmox.yml           # Diagnostics
+│   ├── verify-proxmox.yml           # Diagnostics
+│   ├── semaphore-setup.yml          # Complete Semaphore setup (NEW)
+│   ├── provision-semaphore-vms.yml  # Create Semaphore VMs
+│   ├── deploy-semaphore.yml         # Deploy Semaphore CI/CD
+│   └── destroy-semaphore-vms.yml    # Delete Semaphore VMs
 ├── roles/
 │   ├── lablabs.rke2/                # RKE2 deployment role
 │   ├── provision-vms/               # VM cloning role
-│   └── destroy-vms/                 # VM deletion role
+│   ├── destroy-vms/                 # VM deletion role
+│   └── deploy-semaphore/            # Semaphore CI/CD deployment role
 └── docs/                             # All documentation
     ├── QUICKSTART.md
     ├── SETUP.md
     ├── TROUBLESHOOTING.md
     ├── RKE2-*.md                    # RKE2 guides
-    └── *.md                         # Other docs
+    ├── SEMAPHORE-INFRASTRUCTURE.md  # Semaphore infrastructure guide
+    ├── TASKFILE-SEMAPHORE-QUICKREF.md # Semaphore command reference
+    └── inventory/README.md           # Inventory management guide
 ```
 
 ## ⚙️ Configuration
@@ -314,9 +406,27 @@ ssh_private_key_file: ~/.ssh/proxmox
 
 After RKE2 deployment, the kubeconfig is automatically downloaded to `rke2.yaml` in the workspace root.
 
+### 📍 kubectl Location
+
+RKE2 installs kubectl at: **`/var/lib/rancher/rke2/bin/kubectl`**
+
+**On Master Nodes:**
+```bash
+# SSH to master
+ssh root@192.168.68.100
+
+# kubectl alias is already configured
+kubectl get nodes
+
+# Or use full path
+/var/lib/rancher/rke2/bin/kubectl --kubeconfig=/etc/rancher/rke2/rke2.yaml get nodes
+```
+
+**From Your Local Machine:**
+
 **⚡ Quick Access:**
 ```bash
-# Use directly
+# Use downloaded kubeconfig directly
 kubectl --kubeconfig=rke2.yaml get nodes
 
 # Or set environment variable
@@ -332,6 +442,14 @@ scp -i ~/.ssh/proxmox root@192.168.68.100:/etc/rancher/rke2/rke2.yaml ~/.kube/co
 # Update server IP
 sed -i 's/127.0.0.1/192.168.68.100/g' ~/.kube/config
 ```
+
+### 🗂️ Other RKE2 Binaries
+
+All RKE2 binaries are located at `/var/lib/rancher/rke2/bin/`:
+- `kubectl` - Kubernetes CLI
+- `crictl` - Container runtime CLI  
+- `ctr` - Containerd CLI
+- `rke2` - RKE2 binary
 
 📚 **See [docs/KUBECONFIG-USAGE.md](docs/KUBECONFIG-USAGE.md) for complete kubeconfig guide**
 

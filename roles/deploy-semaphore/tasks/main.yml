@@ -1,0 +1,32 @@
+---
+- name: Include OS-specific variables
+  ansible.builtin.include_vars: "{{ ansible_os_family }}.yml"
+  ignore_errors: true
+
+- name: Install system dependencies
+  ansible.builtin.include_tasks: install_dependencies.yml
+
+- name: Create Semaphore user and directories
+  ansible.builtin.include_tasks: setup_user_directories.yml
+
+- name: Setup database
+  ansible.builtin.include_tasks: setup_database.yml
+
+- name: Download and install Semaphore
+  ansible.builtin.include_tasks: install_semaphore.yml
+
+- name: Configure Semaphore
+  ansible.builtin.include_tasks: configure_semaphore.yml
+
+- name: Setup systemd service
+  ansible.builtin.include_tasks: setup_service.yml
+
+- name: Configure firewall
+  ansible.builtin.include_tasks: setup_firewall.yml
+
+- name: Start and enable Semaphore service
+  ansible.builtin.include_tasks: start_service.yml
+
+- name: Setup backup script
+  ansible.builtin.include_tasks: setup_backup.yml
+  when: semaphore_backup_enabled | default(true)

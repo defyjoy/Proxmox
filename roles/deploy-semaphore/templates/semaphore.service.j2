@@ -1,0 +1,29 @@
+[Unit]
+Description=Semaphore CI/CD Tool
+Documentation=https://github.com/ansible-semaphore/semaphore
+After=network.target
+
+[Service]
+Type=simple
+User={{ semaphore_user }}
+Group={{ semaphore_group }}
+WorkingDirectory={{ semaphore_home }}
+EnvironmentFile={{ semaphore_config_dir }}/semaphore.env
+ExecStart={{ semaphore_home }}/bin/semaphore server --config {{ semaphore_config_dir }}/config.json
+ExecReload=/bin/kill -HUP $MAINPID
+KillMode=mixed
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=semaphore
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ semaphore_home }} {{ semaphore_config_dir }} {{ semaphore_data_dir }} {{ semaphore_log_dir }} {{ semaphore_backup_dir }}
+
+[Install]
+WantedBy=multi-user.target

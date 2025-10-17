@@ -1,0 +1,51 @@
+---
+- name: Download Semaphore binary
+  ansible.builtin.get_url:
+    url: "https://github.com/semaphoreui/semaphore/releases/download/v{{ semaphore_version }}/semaphore_{{ semaphore_version }}_linux_amd64.tar.gz"
+    dest: "/tmp/semaphore_{{ semaphore_version }}_linux_amd64.tar.gz"
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: Extract Semaphore binary
+  ansible.builtin.unarchive:
+    src: "/tmp/semaphore_{{ semaphore_version }}_linux_amd64.tar.gz"
+    dest: "/tmp"
+    remote_src: true
+    owner: root
+    group: root
+
+- name: Copy Semaphore binary to installation directory
+  ansible.builtin.copy:
+    src: "/tmp/semaphore"
+    dest: "{{ semaphore_home }}/bin/semaphore"
+    owner: "{{ semaphore_user }}"
+    group: "{{ semaphore_group }}"
+    mode: '0755'
+    remote_src: true
+
+- name: Create symlink for semaphore command
+  ansible.builtin.file:
+    src: "{{ semaphore_home }}/bin/semaphore"
+    dest: "/usr/local/bin/semaphore"
+    state: link
+    owner: root
+    group: root
+
+- name: Clean up temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/semaphore_{{ semaphore_version }}_linux_amd64.tar.gz"
+    - "/tmp/semaphore"
+
+- name: Verify Semaphore installation
+  ansible.builtin.command: semaphore --version
+  register: semaphore_version_check
+  changed_when: false
+  failed_when: false
+
+- name: Display Semaphore version
+  ansible.builtin.debug:
+    msg: "Semaphore version: {{ semaphore_version_check.stdout if semaphore_version_check.rc == 0 else 'Installation verification failed' }}"
