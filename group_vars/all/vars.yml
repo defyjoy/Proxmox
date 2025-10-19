@@ -12,6 +12,19 @@ ssh_public_key_file: "{{ lookup('env', 'HOME') }}/.ssh/proxmox.pub"
 ssh_private_key_file: "{{ lookup('env', 'HOME') }}/.ssh/proxmox"
 vm_sshkeys: "{{ lookup('file', ssh_public_key_file) }}"
 
+# VM Configuration - CPU Cores, Memory, and Disk
+# Different resource settings for masters and workers
+vm_master_cores: 4      # Master nodes get 4 CPU cores
+vm_worker_cores: 4      # Worker nodes get 2 CPU cores
+
+# Memory configuration (in MB)
+vm_master_memory: 8192  # Master nodes get 8GB RAM
+vm_worker_memory: 4096  # Worker nodes get 4GB RAM
+
+# Disk configuration (in GB)
+vm_master_disk: 50      # Master nodes get 50GB disk
+vm_worker_disk: 32      # Worker nodes get 32GB disk
+
 # Note: API token credentials are loaded directly from vault.yml
 # vault_proxmox_api_token_id and vault_proxmox_api_token_secret
 

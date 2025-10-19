@@ -14,10 +14,7 @@
     proxmox_template_id: 9000
     proxmox_template_name: "ubuntu-cloud-init"  # Update with your actual template name in Proxmox
     
-    # VM specifications
-    vm_cores: 2
-    vm_memory: 4096
-    vm_disk_size: 32
+    # VM specifications (these will be overridden by role-specific settings)
     vm_storage: local  # Update with your storage name
     vm_network_bridge: vmbr0
     vm_gateway: 192.168.68.1
@@ -45,21 +42,27 @@
       run_once: true
       tags: [debug, never]
     
-    - name: Set VM ID for master nodes
+    - name: Set VM ID and resources for master nodes
       ansible.builtin.set_fact:
         vm_id: "{{ master_vm_id_start + groups['masters'].index(inventory_hostname) }}"
         vm_name: "{{ inventory_hostname }}"
+        vm_cores: "{{ vm_master_cores }}"
+        vm_memory: "{{ vm_master_memory }}"
+        vm_disk_size: "{{ vm_master_disk }}"
       when: inventory_hostname in groups['masters']
     
-    - name: Set VM ID for worker nodes
+    - name: Set VM ID and resources for worker nodes
       ansible.builtin.set_fact:
         vm_id: "{{ worker_vm_id_start + groups['workers'].index(inventory_hostname) }}"
         vm_name: "{{ inventory_hostname }}"
+        vm_cores: "{{ vm_worker_cores }}"
+        vm_memory: "{{ vm_worker_memory }}"
+        vm_disk_size: "{{ vm_worker_disk }}"
       when: inventory_hostname in groups['workers']
     
     - name: Display VM provisioning information
       ansible.builtin.debug:
-        msg: "Provisioning VM '{{ vm_name }}' with ID {{ vm_id }} at IP {{ ansible_host }}"
+        msg: "Provisioning VM '{{ vm_name }}' with ID {{ vm_id }} at IP {{ ansible_host }} - CPU: {{ vm_cores }} cores, RAM: {{ vm_memory }}MB, Disk: {{ vm_disk_size }}GB"
     
     - name: Provision VM from template
       ansible.builtin.include_role:
@@ -140,6 +143,8 @@
 - name: Post-provisioning Summary
   hosts: localhost
   gather_facts: false
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
   
   tasks:
     - name: Gather all VM facts
@@ -205,6 +210,10 @@
           - "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
           - ""
           - "✅ All VMs are provisioned and ready!"
+          - ""
+          - "📊 VM Configuration Summary:"
+          - "  Master Nodes: {{ vm_master_cores }} CPU cores, {{ vm_master_memory }}MB RAM, {{ vm_master_disk }}GB disk"
+          - "  Worker Nodes: {{ vm_worker_cores }} CPU cores, {{ vm_worker_memory }}MB RAM, {{ vm_worker_disk }}GB disk"
           - ""
           - "Verify SSH connectivity:"
           - "  task ping"
