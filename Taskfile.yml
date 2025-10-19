@@ -126,11 +126,7 @@ tasks:
     cmds:
       - echo "Provisioning VMs from Proxmox template..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml
-    sources:
-      - "{{.PLAYBOOKS_DIR}}/provision-vms.yml"
-      - "{{.INVENTORY_FILE}}"
-      - roles/provision-vms/**/*
-      - group_vars/all/vault.yml
+
   
   provision-debug:
     desc: Provision VMs with debug output showing vault variables
@@ -177,11 +173,7 @@ tasks:
     cmds:
       - echo "Installing RKE2 cluster..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml
-    sources:
-      - "{{.PLAYBOOKS_DIR}}/rke2-ansible.yaml"
-      - "{{.INVENTORY_FILE}}"
-      - defaults/main.yml
-      - group_vars/all/vault.yml
+
 
   rke2-check:
     desc: Dry-run RKE2 playbook (check mode)
