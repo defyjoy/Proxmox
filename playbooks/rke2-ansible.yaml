@@ -8,14 +8,99 @@
 # Role: https://github.com/lablabs/ansible-role-rke2
 ##############################################################################################################
 
+- name: Start all VMs in inventory
+  hosts: k8s_cluster
+  gather_facts: false
+  become: false  # Proxmox API calls don't need privilege escalation
+  
+  vars_files:
+    - "{{ playbook_dir }}/../group_vars/all/vars.yml"
+    - "{{ playbook_dir }}/../group_vars/all/vault.yml"
+  
+  vars:
+    # Master nodes get IDs starting from 100
+    # Worker nodes get IDs starting from 110
+    master_vm_id_start: 100
+    worker_vm_id_start: 110
+  
+  tasks:
+    - name: Set VM ID for master nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ master_vm_id_start + groups['masters'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['masters']
+    
+    - name: Set VM ID for worker nodes
+      ansible.builtin.set_fact:
+        vm_id: "{{ worker_vm_id_start + groups['workers'].index(inventory_hostname) }}"
+        vm_name: "{{ inventory_hostname }}"
+      when: inventory_hostname in groups['workers']
+    
+    - name: Check VM current status
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vm_id }}"
+        state: current
+      delegate_to: localhost
+      register: vm_status
+      ignore_errors: true
+    
+    - name: Display VM status
+      ansible.builtin.debug:
+        msg: "VM {{ vm_name }} (ID {{ vm_id }}) current status: {{ vm_status.status | default('NOT_FOUND') }}"
+    
+    - name: Start VM if stopped
+      become: false
+      community.proxmox.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_api_user }}"
+        api_token_id: "{{ vault_proxmox_api_token_id }}"
+        api_token_secret: "{{ vault_proxmox_api_token_secret }}"
+        node: "{{ proxmox_node }}"
+        vmid: "{{ vm_id }}"
+        state: started
+      delegate_to: localhost
+      register: vm_start_result
+      when: vm_status.status | default('') != 'running'
+    
+    - name: Skip starting VM if already running
+      ansible.builtin.debug:
+        msg: "VM {{ vm_name }} (ID {{ vm_id }}) is already running - skipping"
+      when: vm_status.status | default('') == 'running'
+    
+    - name: Wait for VM network to be reachable after starting
+      become: false
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        delay: 10
+        timeout: 120
+        state: started
+      delegate_to: localhost
+      when: 
+        - vm_start_result is defined
+        - vm_start_result is changed
+    
+    - name: Display start result
+      ansible.builtin.debug:
+        msg: "✅ VM {{ vm_name }} (ID {{ vm_id }}) started successfully"
+      when: 
+        - vm_start_result is defined
+        - vm_start_result is changed
+
 - name: Prepare all nodes for RKE2 installation
   hosts: k8s_cluster
-  become: yes
-  gather_facts: yes
+  become: true
+  gather_facts: true
   tasks:
     - name: Update system packages (Debian/Ubuntu)
       apt:
-        update_cache: yes
+        update_cache: true
         upgrade: safe
         cache_valid_time: 3600
       when: ansible_os_family == "Debian"
@@ -24,7 +109,7 @@
       yum:
         name: "*"
         state: latest
-        update_cache: yes
+        update_cache: true
       when: ansible_os_family == "RedHat"
 
     - name: Install required packages
@@ -34,13 +119,17 @@
           - wget
           - tar
           - gzip
+          - ca-certificates
+          - apt-transport-https
+          - gnupg
+          - lsb-release
         state: present
 
     - name: Disable swap
       shell: |
         swapoff -a
         sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
-      ignore_errors: yes
+      ignore_errors: true
 
     - name: Enable IPv4 forwarding
       sysctl:
@@ -55,22 +144,165 @@
         value: "1"
         state: present
         reload: yes
-      ignore_errors: yes
+      ignore_errors: true
 
-    - name: Load required kernel modules
+    - name: Find nvme-tcp module file
+      shell: find /lib/modules/{{ ansible_kernel }}/kernel/drivers/nvme/host/ -name "nvme-tcp.ko*" -type f | head -1
+      register: nvme_tcp_module_path
+      changed_when: false
+      failed_when: false
+
+    - name: Check if nvme_tcp module is available
+      stat:
+        path: "{{ nvme_tcp_module_path.stdout }}"
+      register: nvme_tcp_module_check
+      when: nvme_tcp_module_path.stdout != ""
+
+    - name: Display nvme_tcp module availability
+      debug:
+        msg: 
+          - "nvme_tcp module {{ 'is available' if nvme_tcp_module_check.stat.exists else 'is NOT available' }} in kernel {{ ansible_kernel }}"
+          - "Module path: {{ nvme_tcp_module_path.stdout | default('not found') }}"
+
+    - name: Install linux-modules-extra package for nvme_tcp support
+      package:
+        name: linux-modules-extra-{{ ansible_kernel }}
+        state: present
+      when: not nvme_tcp_module_check.stat.exists
+      register: extra_modules_install
+      retries: 3
+      delay: 10
+      ignore_errors: true
+
+    - name: Wait for extra modules to be available after installation
+      shell: |
+        for i in {1..30}; do
+          if find /lib/modules/{{ ansible_kernel }}/kernel/drivers/nvme/host/ -name "nvme-tcp.ko*" -type f | grep -q .; then
+            echo "Module found"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "Module not found after 30 seconds"
+        exit 1
+      when: 
+        - not nvme_tcp_module_check.stat.exists
+        - extra_modules_install is defined
+        - not extra_modules_install.failed
+      ignore_errors: true
+      register: wait_for_modules_result
+
+    - name: Re-check nvme-tcp module after installation
+      shell: find /lib/modules/{{ ansible_kernel }}/kernel/drivers/nvme/host/ -name "nvme-tcp.ko*" -type f | head -1
+      register: nvme_tcp_module_path_after
+      changed_when: false
+      failed_when: false
+      when: 
+        - not nvme_tcp_module_check.stat.exists
+        - extra_modules_install is defined
+        - not extra_modules_install.failed
+
+    - name: Debug module path after installation
+      debug:
+        msg:
+          - "Module path after installation debug:"
+          - "  nvme_tcp_module_path_after is defined: {{ nvme_tcp_module_path_after is defined }}"
+          - "  nvme_tcp_module_path_after.stdout: {{ nvme_tcp_module_path_after.stdout | default('NOT_DEFINED') }}"
+          - "  nvme_tcp_module_check.stat.exists: {{ nvme_tcp_module_check.stat.exists }}"
+      when: 
+        - not nvme_tcp_module_check.stat.exists
+        - extra_modules_install is defined
+        - not extra_modules_install.failed
+
+    - name: Update module check after installation
+      stat:
+        path: "{{ nvme_tcp_module_path_after.stdout }}"
+      register: nvme_tcp_module_check_after
+      when: 
+        - nvme_tcp_module_path_after is defined
+        - nvme_tcp_module_path_after.stdout is defined
+        - nvme_tcp_module_path_after.stdout != ""
+        - not nvme_tcp_module_check.stat.exists
+
+    - name: Load required kernel modules (basic)
       modprobe:
         name: "{{ item }}"
         state: present
       loop:
         - overlay
         - br_netfilter
-      ignore_errors: yes
+      ignore_errors: true
+      register: basic_module_load_result
+      failed_when: false
+
+    - name: Load nvme_tcp module
+      modprobe:
+        name: nvme_tcp
+        state: present
+      ignore_errors: true
+      register: nvme_tcp_load_result
+      failed_when: false
+      when: 
+        - nvme_tcp_module_check.stat.exists or (nvme_tcp_module_check_after is defined and nvme_tcp_module_check_after.stat.exists)
+
+    - name: Verify nvme_tcp module is loaded
+      shell: lsmod | grep nvme_tcp
+      register: nvme_tcp_loaded
+      changed_when: false
+      failed_when: false
+
+    - name: Retry loading nvme_tcp if initial attempt failed
+      modprobe:
+        name: nvme_tcp
+        state: present
+      when: nvme_tcp_loaded.rc != 0
+      ignore_errors: true
+      retries: 3
+      delay: 5
+      register: nvme_tcp_retry_result
+
+    - name: Final verification of nvme_tcp module
+      shell: lsmod | grep nvme_tcp
+      register: nvme_tcp_final_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check overlay module status
+      shell: lsmod | grep overlay
+      register: overlay_module_check
+      changed_when: false
+      failed_when: false
+
+    - name: Check br_netfilter module status
+      shell: lsmod | grep br_netfilter
+      register: br_netfilter_module_check
+      changed_when: false
+      failed_when: false
+
+    - name: Display kernel module loading results
+      debug:
+        msg:
+          - "Kernel module loading results:"
+          - "  overlay: {{ 'loaded' if overlay_module_check.rc == 0 else 'failed' }}"
+          - "  br_netfilter: {{ 'loaded' if br_netfilter_module_check.rc == 0 else 'failed' }}"
+          - "  nvme_tcp: {{ 'loaded' if nvme_tcp_final_check.rc == 0 else 'failed' }}"
+          - "  nvme_tcp retry: {{ 'attempted' if nvme_tcp_retry_result is defined else 'not needed' }}"
+
+    - name: Warning if nvme_tcp module failed to load
+      debug:
+        msg:
+          - "⚠️  WARNING: nvme_tcp module failed to load!"
+          - "This may affect RKE2 storage functionality."
+          - "The module is required for NVMe over TCP storage support."
+          - "Please check kernel compatibility and module availability."
+      when: nvme_tcp_final_check.rc != 0
 
     - name: Make kernel modules persistent
       copy:
         content: |
           overlay
           br_netfilter
+          nvme_tcp
         dest: /etc/modules-load.d/k8s.conf
         mode: '0644'
 
@@ -84,12 +316,12 @@
         - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
         - { name: 'net.bridge.bridge-nf-call-ip6tables', value: '1' }
         - { name: 'net.ipv4.ip_forward', value: '1' }
-      ignore_errors: yes
+      ignore_errors: true
 
 - name: Deploy RKE2 Cluster
   hosts: k8s_cluster
-  become: yes
-  gather_facts: yes
+  become: true
+  gather_facts: true
   vars_files:
     - ../defaults/main.yml
   roles:
@@ -97,8 +329,8 @@
 
 - name: Post RKE2 Installation - Configure kubectl on Masters
   hosts: masters
-  become: yes
-  gather_facts: no
+  become: true
+  gather_facts: false
   tasks:
     - name: Wait for RKE2 server to be ready
       wait_for:
@@ -133,8 +365,8 @@
 
 - name: Post-installation verification and configuration
   hosts: masters[0]
-  become: yes
-  gather_facts: no
+  become: true
+  gather_facts: false
   tasks:
     - name: Wait for all nodes to be ready
       shell: |

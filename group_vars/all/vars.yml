@@ -2,9 +2,9 @@
 # Non-sensitive variables for all hosts
 
 # Proxmox connection settings
-proxmox_host: 192.168.68.65
+proxmox_host: 192.168.68.66
 proxmox_api_user: root@pam
-proxmox_node: pve-01
+proxmox_node: pve
 proxmox_template_id: 9000
 
 # SSH Key configuration
@@ -19,7 +19,7 @@ vm_worker_cores: 4      # Worker nodes get 2 CPU cores
 
 # Memory configuration (in MB)
 vm_master_memory: 8192  # Master nodes get 8GB RAM
-vm_worker_memory: 4096  # Worker nodes get 4GB RAM
+vm_worker_memory: 16384  # Worker nodes get 4GB RAM
 
 # Disk configuration (in GB)
 vm_master_disk: 50      # Master nodes get 50GB disk
