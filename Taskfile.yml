@@ -156,6 +156,22 @@ tasks:
       - echo "Running provision playbook in check mode..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --check
 
+  start-vms:
+    desc: Start all VMs in inventory if they are stopped
+    cmds:
+      - echo "Starting all VMs in inventory..."
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml
+    sources:
+      - "{{.PLAYBOOKS_DIR}}/start-vms.yml"
+      - "{{.INVENTORY_FILE}}"
+      - group_vars/all/vault.yml
+
+  start-vms-check:
+    desc: Dry-run start VMs playbook (check mode)
+    cmds:
+      - echo "Running start VMs playbook in check mode..."
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml --check
+
   rke2:
     desc: Install and configure RKE2 cluster
     cmds:
@@ -213,6 +229,7 @@ tasks:
     cmds:
       - echo "Checking playbook syntax..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/provision-vms.yml --syntax-check
+      - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml --syntax-check
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml --syntax-check
       - echo "✅ All playbooks passed syntax check!"
 
@@ -221,6 +238,7 @@ tasks:
     cmds:
       - echo "Linting playbooks..."
       - ansible-lint {{.PLAYBOOKS_DIR}}/provision-vms.yml || true
+      - ansible-lint {{.PLAYBOOKS_DIR}}/start-vms.yml || true
       - ansible-lint {{.PLAYBOOKS_DIR}}/rke2-ansible.yaml || true
 
   list-hosts:
@@ -271,6 +289,7 @@ tasks:
         
         Individual Playbooks:
           task provision      # Provision VMs from template
+          task start-vms      # Start all VMs if stopped
           task destroy        # Destroy all VMs (with confirmation)
           task rke2           # Install RKE2 cluster
           task rke2-remove    # Remove RKE2 (keeps VMs)
@@ -280,6 +299,7 @@ tasks:
           task ping           # Test SSH connectivity
           task syntax         # Check playbook syntax
           task provision-check # Dry-run provision
+          task start-vms-check # Dry-run start VMs
           task rke2-check     # Dry-run RKE2
         
         RKE2 Management:
