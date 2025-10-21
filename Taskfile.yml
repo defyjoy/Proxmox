@@ -157,10 +157,7 @@ tasks:
     cmds:
       - echo "Starting all VMs in inventory..."
       - ansible-playbook -i {{.INVENTORY_FILE}} {{.PLAYBOOKS_DIR}}/start-vms.yml
-    sources:
-      - "{{.PLAYBOOKS_DIR}}/start-vms.yml"
-      - "{{.INVENTORY_FILE}}"
-      - group_vars/all/vault.yml
+
 
   start-vms-check:
     desc: Dry-run start VMs playbook (check mode)
