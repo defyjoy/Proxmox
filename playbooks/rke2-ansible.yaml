@@ -176,11 +176,20 @@
       package:
         name: linux-modules-extra-{{ ansible_kernel }}
         state: present
+        update_cache: yes
       when: nvme_tcp_module_path.stdout == "" or (nvme_tcp_module_check is defined and not nvme_tcp_module_check.stat.exists)
       register: extra_modules_install
       retries: 3
       delay: 10
       ignore_errors: true
+    
+    - name: Verify linux-modules-extra package installation
+      debug:
+        msg:
+          - "Package installation {{ 'succeeded' if not extra_modules_install.failed else 'FAILED' }}"
+          - "This is required for OpenEBS and other storage solutions that need nvme_tcp support"
+          - "If installation failed, try: apt update && apt install -y linux-modules-extra-{{ ansible_kernel }}"
+      when: nvme_tcp_module_path.stdout == "" or (nvme_tcp_module_check is defined and not nvme_tcp_module_check.stat.exists)
 
     - name: Wait for extra modules to be available after installation
       shell: |
@@ -232,15 +241,12 @@
       register: basic_module_load_result
       failed_when: false
 
-    - name: Load nvme_tcp module
+    - name: Always try to load nvme_tcp module
       modprobe:
         name: nvme_tcp
         state: present
       ignore_errors: true
       register: nvme_tcp_load_result
-      failed_when: false
-      when: 
-        - (nvme_tcp_module_check is defined and nvme_tcp_module_check.stat.exists) or (nvme_tcp_module_check_after is defined and nvme_tcp_module_check_after.stat.exists)
 
     - name: Verify nvme_tcp module is loaded
       shell: lsmod | grep nvme_tcp
